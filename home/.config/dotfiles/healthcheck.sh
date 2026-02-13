@@ -701,7 +701,7 @@ render_tui_dashboard() {
   local panel_h1 panel_h2 panel_h3
   local graph_cpu graph_mem graph_gpu graph_net
   local cpu_line mem_line_live gpu_line net_line nv_line
-  local chart_w process_row process_start_row r
+  local chart_w process_row process_start_row r info_w
   local cpu_c mem_c gpu_c net_c
   local ico_os ico_host ico_kernel ico_uptime ico_de ico_cpu ico_mem ico_pkg ico_gpu ico_npu
   local gif_x gif_y gif_w gif_h gif_place gif_left gif_top
@@ -735,6 +735,8 @@ render_tui_dashboard() {
   else
     gif_place=""
   fi
+  info_w=$((w - gif_w - 8))
+  (( info_w < 44 )) && info_w=44
 
   if (( USE_GLYPHS == 1 )); then
     ico_os=""
@@ -760,7 +762,7 @@ render_tui_dashboard() {
     ico_npu="[NPU]"
   fi
 
-  chart_w=$(( w - 24 ))
+  chart_w=$(( info_w - 12 ))
   (( chart_w < 12 )) && chart_w=12
   graph_cpu="$(hist_graph "$hist_cpu" "$chart_w" "$GRAPH_MODE")"
   graph_mem="$(hist_graph "$hist_mem" "$chart_w" "$GRAPH_MODE")"
@@ -774,7 +776,7 @@ render_tui_dashboard() {
   cpu_line="$(printf "[%s] %3d%%  %s  %s" "$(color_bar "$cpu_usage_pct" 14)" "$cpu_usage_pct" "${cpu_freq_mhz}MHz" "$cpu_voltage_v")"
   mem_line_live="$(printf "[%s] %3d%%" "$(color_bar "$mem_usage_pct" 14)" "$mem_usage_pct")"
   gpu_line="$(printf "[%s] %3d%% VRAM:%3d%% %s %s %s" "$(color_bar "$gpu_usage_pct" 14)" "$gpu_usage_pct" "$gpu_mem_pct" "$gpu_temp_c" "$gpu_power_w" "$gpu_clock_mhz")"
-  nv_line="$(fit_text "NVIDIA: $nvidia_summary" "$((w - gif_w - 8))")"
+  nv_line="$(fit_text "NVIDIA: $nvidia_summary" "$info_w")"
   net_line="RX $(format_bps "$net_rx_rate_bps") | TX $(format_bps "$net_tx_rate_bps")"
 
   if (( DASH_INIT == 0 )); then
@@ -787,39 +789,33 @@ render_tui_dashboard() {
     fi
     DASH_INIT=1
   fi
-  if [[ "$ANIMATE" -eq 1 && -n "$TUI_GIF_PATH" && -n "$gif_place" ]]; then
-    if [[ -z "$GIF_PID" ]] || ! kill -0 "$GIF_PID" >/dev/null 2>&1; then
-      render_gif_block "$TUI_GIF_PATH" "tui" "$gif_place" || true
-    fi
-  fi
+  box_line "$((x + 2))" "$((top_y + 1))" "$info_w" "$ico_os  OS: $os_name"
+  box_line "$((x + 2))" "$((top_y + 2))" "$info_w" "$ico_host Host: $host"
+  box_line "$((x + 2))" "$((top_y + 3))" "$info_w" "$ico_kernel Kernel: $kernel"
+  box_line "$((x + 2))" "$((top_y + 4))" "$info_w" "$ico_uptime Uptime: $uptime_human"
+  box_line "$((x + 2))" "$((top_y + 5))" "$info_w" "$ico_de WM/DE: $wm_name"
+  box_line "$((x + 2))" "$((top_y + 6))" "$info_w" "$ico_cpu CPU: $cpu_model"
+  box_line "$((x + 2))" "$((top_y + 7))" "$info_w" "$ico_mem Memory: $mem_line"
+  box_line "$((x + 2))" "$((top_y + 8))" "$info_w" "$ico_pkg Packages: $pkg_count"
+  box_line "$((x + 2))" "$((top_y + 9))" "$info_w" "$ico_gpu GPU pref: ${DOTFILES_GPU_VENDOR:-unknown}"
+  box_line "$((x + 2))" "$((top_y + 10))" "$info_w" "$ico_npu NPU ready: ${DOTFILES_NPU_READY:-unknown}"
 
-  box_line "$((x + 2))" "$((top_y + 1))" "$((w - gif_w - 8))" "$ico_os  OS: $os_name"
-  box_line "$((x + 2))" "$((top_y + 2))" "$((w - gif_w - 8))" "$ico_host Host: $host"
-  box_line "$((x + 2))" "$((top_y + 3))" "$((w - gif_w - 8))" "$ico_kernel Kernel: $kernel"
-  box_line "$((x + 2))" "$((top_y + 4))" "$((w - gif_w - 8))" "$ico_uptime Uptime: $uptime_human"
-  box_line "$((x + 2))" "$((top_y + 5))" "$((w - gif_w - 8))" "$ico_de WM/DE: $wm_name"
-  box_line "$((x + 2))" "$((top_y + 6))" "$((w - gif_w - 8))" "$ico_cpu CPU: $cpu_model"
-  box_line "$((x + 2))" "$((top_y + 7))" "$((w - gif_w - 8))" "$ico_mem Memory: $mem_line"
-  box_line "$((x + 2))" "$((top_y + 8))" "$((w - gif_w - 8))" "$ico_pkg Packages: $pkg_count"
-  box_line "$((x + 2))" "$((top_y + 9))" "$((w - gif_w - 8))" "$ico_gpu GPU pref: ${DOTFILES_GPU_VENDOR:-unknown}"
-  box_line "$((x + 2))" "$((top_y + 10))" "$((w - gif_w - 8))" "$ico_npu NPU ready: ${DOTFILES_NPU_READY:-unknown}"
+  box_line "$((x + 2))" "$((top_y + panel_h1 + 1))" "$info_w" "Session : $session_type   Desktop : $desktop"
+  box_line "$((x + 2))" "$((top_y + panel_h1 + 2))" "$info_w" "Hyprland: $hypr_env   hyprctl : $hyprctl_state   waybar : $waybar_state"
+  box_line "$((x + 2))" "$((top_y + panel_h1 + 3))" "$info_w" "Portal  : $portal_state   DM : ${DOTFILES_DISPLAY_MANAGER:-unknown}   Lock : ${DOTFILES_LOCK_MANAGER:-unknown}"
+  box_line "$((x + 2))" "$((top_y + panel_h1 + 4))" "$info_w" "Network : ${DOTFILES_DEFAULT_IFACE:-unknown}   Voice : ${DOTFILES_VOICE_SOURCE:-unknown}"
+  box_line "$((x + 2))" "$((top_y + panel_h1 + 5))" "$info_w" "GPU mods: $gpu_modules"
+  box_line "$((x + 2))" "$((top_y + panel_h1 + 6))" "$info_w" "$nv_line"
+  box_line "$((x + 2))" "$((top_y + panel_h1 + 7))" "$info_w" "NVIDIA use: $nvidia_usage   NPU mods: $npu_mods   /dev/accel: $accel_nodes"
 
-  box_line "$((x + 2))" "$((top_y + panel_h1 + 1))" "$((w - 4))" "Session: $session_type | Desktop: $desktop"
-  box_line "$((x + 2))" "$((top_y + panel_h1 + 2))" "$((w - 4))" "Hyprland env: $hypr_env | hyprctl: $hyprctl_state | waybar: $waybar_state | portal: $portal_state"
-  box_line "$((x + 2))" "$((top_y + panel_h1 + 3))" "$((w - 4))" "DM: ${DOTFILES_DISPLAY_MANAGER:-unknown} | Lock: ${DOTFILES_LOCK_MANAGER:-unknown} | Net iface: ${DOTFILES_DEFAULT_IFACE:-unknown}"
-  box_line "$((x + 2))" "$((top_y + panel_h1 + 4))" "$((w - 4))" "Voice: ${DOTFILES_VOICE_SOURCE:-unknown}"
-  box_line "$((x + 2))" "$((top_y + panel_h1 + 5))" "$((w - 4))" "GPU modules: $gpu_modules"
-  box_line "$((x + 2))" "$((top_y + panel_h1 + 6))" "$((w - 4))" "$nv_line"
-  box_line "$((x + 2))" "$((top_y + panel_h1 + 7))" "$((w - 4))" "NVIDIA use: $nvidia_usage | NPU modules: $npu_mods | /dev/accel: $accel_nodes"
-
-  box_line "$((x + 2))" "$((top_y + panel_h1 + panel_h2 + 1))" "$((w - gif_w - 8))" "CPU  $cpu_line"
-  box_line "$((x + 2))" "$((top_y + panel_h1 + panel_h2 + 2))" "$((w - gif_w - 8))" "MEM  $mem_line_live"
-  box_line "$((x + 2))" "$((top_y + panel_h1 + panel_h2 + 3))" "$((w - gif_w - 8))" "GPU  $gpu_line"
-  box_line "$((x + 2))" "$((top_y + panel_h1 + panel_h2 + 4))" "$((w - gif_w - 8))" "NET  $net_line" "$net_c"
-  box_line "$((x + 2))" "$((top_y + panel_h1 + panel_h2 + 6))" "$((w - gif_w - 8))" "CPU graph: $graph_cpu" "$cpu_c"
-  box_line "$((x + 2))" "$((top_y + panel_h1 + panel_h2 + 7))" "$((w - gif_w - 8))" "MEM graph: $graph_mem" "$mem_c"
-  box_line "$((x + 2))" "$((top_y + panel_h1 + panel_h2 + 8))" "$((w - gif_w - 8))" "GPU graph: $graph_gpu" "$gpu_c"
-  box_line "$((x + 2))" "$((top_y + panel_h1 + panel_h2 + 9))" "$((w - gif_w - 8))" "NET graph: $graph_net" "$net_c"
+  box_line "$((x + 2))" "$((top_y + panel_h1 + panel_h2 + 1))" "$info_w" "CPU  $cpu_line"
+  box_line "$((x + 2))" "$((top_y + panel_h1 + panel_h2 + 2))" "$info_w" "MEM  $mem_line_live"
+  box_line "$((x + 2))" "$((top_y + panel_h1 + panel_h2 + 3))" "$info_w" "GPU  $gpu_line"
+  box_line "$((x + 2))" "$((top_y + panel_h1 + panel_h2 + 4))" "$info_w" "NET  $net_line" "$net_c"
+  box_line "$((x + 2))" "$((top_y + panel_h1 + panel_h2 + 6))" "$info_w" "CPU graph: $graph_cpu" "$cpu_c"
+  box_line "$((x + 2))" "$((top_y + panel_h1 + panel_h2 + 7))" "$info_w" "MEM graph: $graph_mem" "$mem_c"
+  box_line "$((x + 2))" "$((top_y + panel_h1 + panel_h2 + 8))" "$info_w" "GPU graph: $graph_gpu" "$gpu_c"
+  box_line "$((x + 2))" "$((top_y + panel_h1 + panel_h2 + 9))" "$info_w" "NET graph: $graph_net" "$net_c"
 
   box_line "$((gif_x))" "$((gif_y + gif_h + 1))" "$((gif_w))" "TOP PROCESSES (CPU)" "$C3"
   box_line "$((gif_x))" "$((gif_y + gif_h + 2))" "$((gif_w))" "  PID   CPU   MEM   CMD"
