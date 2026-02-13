@@ -60,8 +60,6 @@ TUI_GIF_PATH=""
 
 if locale charmap 2>/dev/null | grep -qi 'utf-8'; then
   GRAPH_MODE="unicode"
-  BAR_FILL="█"
-  BAR_EMPTY="░"
   USE_GLYPHS=1
 fi
 
@@ -701,7 +699,7 @@ render_tui_dashboard() {
   local panel_h1 panel_h2 panel_h3
   local graph_cpu graph_mem graph_gpu graph_net
   local cpu_line mem_line_live gpu_line net_line nv_line
-  local chart_w process_row process_start_row r info_w
+  local chart_w process_row process_start_row r info_w proc_title_row proc_header_row
   local cpu_c mem_c gpu_c net_c
   local ico_os ico_host ico_kernel ico_uptime ico_de ico_cpu ico_mem ico_pkg ico_gpu ico_npu
   local gif_x gif_y gif_w gif_h gif_place gif_left gif_top
@@ -817,10 +815,13 @@ render_tui_dashboard() {
   box_line "$((x + 2))" "$((top_y + panel_h1 + panel_h2 + 8))" "$info_w" "GPU graph: $graph_gpu" "$gpu_c"
   box_line "$((x + 2))" "$((top_y + panel_h1 + panel_h2 + 9))" "$info_w" "NET graph: $graph_net" "$net_c"
 
-  box_line "$((gif_x))" "$((gif_y + gif_h + 1))" "$((gif_w))" "TOP PROCESSES (CPU)" "$C3"
-  box_line "$((gif_x))" "$((gif_y + gif_h + 2))" "$((gif_w))" "  PID   CPU   MEM   CMD"
-  process_start_row=$((gif_y + gif_h + 3))
-  for ((r = gif_y + gif_h + 3; r <= lines - 1; r++)); do
+  # Keep process list in LIVE TELEMETRY region only (not in SESSION rows).
+  proc_title_row=$((top_y + panel_h1 + panel_h2 + 1))
+  proc_header_row=$((proc_title_row + 1))
+  process_start_row=$((proc_title_row + 2))
+  box_line "$((gif_x))" "$proc_title_row" "$((gif_w))" "TOP PROCESSES (CPU)" "$C3"
+  box_line "$((gif_x))" "$proc_header_row" "$((gif_w))" "  PID   CPU   MEM   CMD"
+  for ((r = process_start_row; r <= lines - 1; r++)); do
     box_line "$((gif_x))" "$r" "$((gif_w))" ""
   done
   process_row="$process_start_row"
@@ -838,7 +839,11 @@ render_tui() {
 
   tput civis 2>/dev/null || true
   tput smcup 2>/dev/null || true
-  trap '[[ -n "$GIF_PID" ]] && kill "$GIF_PID" >/dev/null 2>&1 || true; kitten icat --clear --silent >/dev/null 2>&1 || true; tput rmcup 2>/dev/null || true; tput cnorm 2>/dev/null || true; printf "\n"' EXIT INT TERM
+  # Raw-ish mode prevents scroll/arrow escape sequences from being echoed into the TUI.
+  local stty_state=""
+  stty_state="$(stty -g 2>/dev/null || true)"
+  stty -echo -icanon time 0 min 0 2>/dev/null || true
+  trap '[[ -n "$GIF_PID" ]] && kill "$GIF_PID" >/dev/null 2>&1 || true; kitten icat --clear --silent >/dev/null 2>&1 || true; [[ -n "$stty_state" ]] && stty "$stty_state" 2>/dev/null || true; tput rmcup 2>/dev/null || true; tput cnorm 2>/dev/null || true; printf "\n"' EXIT INT TERM
 
   DASH_INIT=0
   gather_data
@@ -858,8 +863,8 @@ render_tui() {
       case "$key" in
         q|Q) break ;;
         $'\e')
-          # Drain any pending escape-sequence bytes (arrows, scroll, mouse) to avoid terminal spam.
-          while read -rsn1 -t 0.002 junk; do :; done
+          # Drain all pending escape-sequence bytes (arrows, scroll, mouse) to avoid UI pollution.
+          while read -rsn1 -t 0 junk; do :; done
           ;;
       esac
     fi
