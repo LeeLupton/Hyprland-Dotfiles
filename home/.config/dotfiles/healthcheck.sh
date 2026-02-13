@@ -268,16 +268,27 @@ render_body() {
 render_gif_block() {
   local gif_path="$1"
   local mode="${2:-static}"
+  local place_arg="${3:-}"
+  local icat_engine="builtin"
   [[ -n "$gif_path" ]] || return 0
   [[ -t 1 ]] || return 0
+
+  if command -v magick >/dev/null 2>&1 || command -v convert >/dev/null 2>&1; then
+    icat_engine="magick"
+  fi
 
   if command -v kitten >/dev/null 2>&1 && [[ -n "${KITTY_WINDOW_ID:-}" ]]; then
     # Kitty ships the image protocol client, so this works without extra installs.
     if [[ "$mode" == "tui" ]]; then
-      kitten icat --silent --stdin=no --loop -1 "$gif_path" >/dev/null 2>&1 &
+      kitten icat --clear --silent >/dev/null 2>&1 || true
+      if [[ -n "$place_arg" ]]; then
+        kitten icat --silent --stdin=no --transfer-mode=stream --engine="$icat_engine" --z-index=-10 --place "$place_arg" --loop -1 "$gif_path" >/dev/null 2>&1 &
+      else
+        kitten icat --silent --stdin=no --transfer-mode=stream --engine="$icat_engine" --z-index=-10 --loop -1 "$gif_path" >/dev/null 2>&1 &
+      fi
       GIF_PID="$!"
       return 0
-    elif kitten icat --silent --stdin=no "$gif_path" 2>/dev/null; then
+    elif kitten icat --silent --stdin=no --engine="$icat_engine" "$gif_path" 2>/dev/null; then
       return 0
     fi
   fi
@@ -308,8 +319,26 @@ render_static() {
 render_tui() {
   local gif_path
   local tick=0
-  local body_row=1
+  local body_row=3
+  local cols lines left_width gif_left gif_top gif_w gif_h gif_place
+  local row
   gif_path="$(resolve_gif_path)"
+  cols="$(tput cols 2>/dev/null || echo 120)"
+  lines="$(tput lines 2>/dev/null || echo 40)"
+
+  left_width=62
+  if (( cols < 110 )); then
+    left_width=56
+  fi
+  gif_left=$(( left_width + 2 ))
+  gif_top=2
+  gif_w=$(( cols - gif_left - 1 ))
+  gif_h=$(( lines - 4 ))
+  if (( gif_w < 18 || gif_h < 8 )); then
+    gif_place=""
+  else
+    gif_place="${gif_w}x${gif_h}@${gif_left}x${gif_top}"
+  fi
 
   tput civis 2>/dev/null || true
   tput smcup 2>/dev/null || true
@@ -318,14 +347,11 @@ render_tui() {
   gather_data
   printf "\033[H\033[J"
   printf "%b%s%b\n" "$C1" "RICE-CHECK :: RICEFETCH" "$C0"
-  printf "%b%s%b\n" "$C1" "RICE-CHECK GIF CORE  (q to quit)" "$C0"
+  printf "%b%s%b\n" "$C1" "RICE-CHECK GIF CORE  (q to quit) | left metrics / right gif" "$C0"
+  printf "%b%s%b\n" "$C2" "$(printf '%*s' "$left_width" '' | tr ' ' '-')" "$C0"
   if [[ "$ANIMATE" -eq 1 ]]; then
-    render_gif_block "$gif_path" "tui"
+    render_gif_block "$gif_path" "tui" "$gif_place"
   fi
-  # Leave space under the GIF panel before metrics body.
-  printf "\n"
-  body_row="$(tput lines 2>/dev/null || echo 40)"
-  body_row=$(( body_row > 30 ? 16 : 14 ))
   printf "\033[%d;1H" "$body_row"
   render_body
 
@@ -333,7 +359,10 @@ render_tui() {
     # refresh metrics every ~1s without re-sending the GIF
     if (( tick % 10 == 0 )); then
       gather_data
-      printf "\033[%d;1H\033[J" "$body_row"
+      for ((row = body_row; row <= lines; row++)); do
+        printf "\033[%d;1H\033[0K" "$row"
+      done
+      printf "\033[%d;1H" "$body_row"
       render_body
     fi
 
