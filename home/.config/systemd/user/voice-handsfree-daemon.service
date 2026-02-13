@@ -1,0 +1,23 @@
+[Unit]
+Description=Hands-free always-on voice assistant listener
+After=default.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/bash -lc 'source /home/lee/.env; export OPENAI_API_KEY; VOICE_STT=openai OPENAI_STT_MODEL=whisper-1 OPENAI_STT_LANGUAGE=en VOICE_HANDSFREE_STT_MODE=openai VOICE_TTS=openai OPENAI_CHAT_MODEL=gpt-5.1 OPENAI_TTS_MODEL=gpt-4o-mini-tts OPENAI_TTS_VOICE=sage OPENAI_TTS_INSTRUCTIONS="Calm, low-energy, chill tone. Speak slightly slower, avoid hype, and speak in English only." VOICE_ENGLISH_ONLY=1 VOICE_TTS_PRE_DELAY_SECS=0.35 VOICE_WAKE_WORD=codex VOICE_SOURCE=alsa_input.usb-Generic_Blue_Microphones_LT_240802200351AD020218_111000-00.analog-stereo /home/lee/.config/hypr/voice/venv/bin/python /home/lee/.config/hypr/scripts/voice_handsfree_daemon.py'
+Restart=always
+RestartSec=2
+Environment=VOICE_HANDSFREE_REQUIRE_WAKE=0
+Environment=VOICE_HANDSFREE_CHUNK_SECS=2.8
+Environment=VOICE_HANDSFREE_SLEEP_SECS=0.2
+Environment=VOICE_HANDSFREE_MIN_RMS=450
+Environment=VOICE_HANDSFREE_DEDUPE_WINDOW_SECS=2.0
+Environment=VOICE_HANDSFREE_PASTE_REPLY=0
+Environment=VOICE_HANDSFREE_ENGLISH_ONLY=1
+Environment=VOICE_HANDSFREE_DEBUG_POPUP=1
+Environment=VOICE_LOG=/tmp/voice_control.log
+Environment=VOICE_EVENT_LOG=/tmp/voice_control_events.log
+Environment=VOICE_LOG_LEVEL=debug
+
+[Install]
+WantedBy=default.target

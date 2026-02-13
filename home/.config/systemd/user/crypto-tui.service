@@ -1,0 +1,14 @@
+[Unit]
+Description=Crypto TUI Dashboard
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/home/lee/.gemini/antigravity/scratch/crypto-tui
+ExecStart=/home/lee/.cargo/bin/cargo run --release
+Restart=on-failure
+RestartSec=10
+Environment=RUST_BACKTRACE=1
+
+[Install]
+WantedBy=default.target

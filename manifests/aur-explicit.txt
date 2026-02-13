@@ -1,0 +1,14 @@
+burpsuite
+feroxbuster
+foundry-bin
+ghostty-git
+gtk-engine-murrine
+hyprdynamicmonitors-bin
+pokemon-colorscripts-git
+suricata
+ttf-victor-mono
+wallust
+wlogout
+yay-bin
+yay-bin-debug
+zulu-21-bin

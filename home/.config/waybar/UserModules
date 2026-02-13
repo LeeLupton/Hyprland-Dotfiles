@@ -1,0 +1,45 @@
+{
+    "custom/audio": {
+        "format": "♪ {text}",
+        "tooltip": true,
+        "exec": "$HOME/waybar-scripts/waybar-audio.py",
+        "return-type": "json",
+        "on-click": "$HOME/waybar-scripts/waybar-audio-menu.sh",
+        "on-click-right": "$HOME/waybar-scripts/waybar-audio-menu.sh --source",
+        "on-scroll-up": "pactl set-sink-volume @DEFAULT_SINK@ +5%",
+        "on-scroll-down": "pactl set-sink-volume @DEFAULT_SINK@ -5%"
+    },
+    "custom/network": {
+        "format": "{text}",
+        "tooltip": true,
+        "exec": "$HOME/waybar-scripts/waybar-network.py",
+        "return-type": "json",
+        "interval": 1
+    },
+    "custom/cava_output": {
+        "exec": "$HOME/.config/hypr/scripts/WaybarCava.sh output",
+        "format": "{}",
+        "tooltip": false
+    },
+    "custom/cava_input": {
+        "exec": "$HOME/.config/hypr/scripts/WaybarCava.sh input",
+        "format": "{}",
+        "tooltip": false
+    },
+    "custom/traffic": {
+        "format": "{text}",
+        "tooltip": true,
+        "exec": "TRAFFIC_IFACE=enp4s0 $HOME/waybar-scripts/traffic_rs/target/debug/traffic_rs",
+        "return-type": "json"
+    },
+    "custom/news_ribbon": {
+        "format": "{text}",
+        "tooltip": true,
+        "return-type": "json",
+        "exec": "WAYBAR_NEWS_API='http://127.0.0.1:5000/api/tape?limit=80&includeOverview=true,http://127.0.0.1:5000/api/posts?limit=80&sortBy=recent' WAYBAR_NEWS_VISIBLE_WIDTH=314 WAYBAR_NEWS_SCROLL_STEP=0.5 WAYBAR_NEWS_SCROLL_DELAY=0.07 $HOME/waybar-scripts/waybar-news-ribbon.py --stream",
+        "expand": true,
+        "restart-interval": 2,
+        "on-click": "xdg-open http://127.0.0.1:5000",
+        "on-click-right": "rm -f $HOME/.cache/waybar-news-ribbon.json"
+    }
+}

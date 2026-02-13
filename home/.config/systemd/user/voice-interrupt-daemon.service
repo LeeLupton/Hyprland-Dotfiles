@@ -1,0 +1,20 @@
+[Unit]
+Description=Hands-free voice interrupt listener
+After=default.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/bash -lc 'source /home/lee/.env; export OPENAI_API_KEY; VOICE_STT=local VOICE_SOURCE=alsa_input.usb-Generic_Blue_Microphones_LT_240802200351AD020218_111000-00.analog-stereo /home/lee/.config/hypr/voice/venv/bin/python /home/lee/.config/hypr/scripts/voice_interrupt_daemon.py'
+Restart=always
+RestartSec=2
+Environment=VOICE_INTERRUPT_CHUNK_SECS=1.2
+Environment=VOICE_INTERRUPT_SLEEP_SECS=0.15
+Environment=VOICE_INTERRUPT_COOLDOWN_SECS=0.8
+Environment="VOICE_INTERRUPT_PHRASES=stop talking,shut up,quiet,silence,stop"
+Environment=VOICE_INTERRUPT_DEBUG_POPUP=1
+Environment=VOICE_LOG=/tmp/voice_control.log
+Environment=VOICE_EVENT_LOG=/tmp/voice_control_events.log
+Environment=VOICE_LOG_LEVEL=debug
+
+[Install]
+WantedBy=default.target

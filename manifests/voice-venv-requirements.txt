@@ -1,0 +1,11 @@
+certifi==2026.1.4
+cffi==2.0.0
+charset-normalizer==3.4.4
+idna==3.11
+pycparser==3.0
+requests==2.32.5
+srt==3.5.3
+tqdm==4.67.3
+urllib3==2.6.3
+vosk==0.3.45
+websockets==16.0

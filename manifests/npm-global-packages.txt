@@ -1,0 +1,4 @@
+@google/gemini-cli
+@openai/codex
+clawdhub
+cline

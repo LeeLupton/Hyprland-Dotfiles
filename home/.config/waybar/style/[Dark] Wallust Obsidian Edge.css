@@ -1,0 +1,311 @@
+/* ---- 💫 https://github.com/JaKooLit 💫 ---- */
+/* Dark - Obsidian Edge */
+
+@import './wallust/colors-waybar.css';
+
+* {
+font-family: "JetBrainsMono Nerd Font";
+font-weight: bold;
+min-height: 0;
+/* set font-size to 100% if font scaling is set to 1.00 using nwg-look */
+font-size: 97%;
+font-feature-settings: '"zero", "ss01", "ss02", "ss03", "ss04", "ss05", "cv31"';
+}
+
+window#waybar {
+    background: black;
+	border-radius: 12px;
+}
+
+window#waybar.hidden {
+    opacity: 0.5;
+}
+
+tooltip {
+	color: @foreground;
+    background: rgba(0, 0, 0, 0.8);
+    border-radius: 10px;
+}
+
+tooltip label {
+    color: @foreground;
+    padding-right: 2px;
+    padding-left: 2px;
+}
+
+/*-----module groups----*/
+.modules-left,
+.modules-center,
+.modules-right {
+    border: 0px solid #b4befe;
+    border-radius: 10px;
+	padding-top: 2px;
+	padding-bottom: 2px;
+    padding-right: 4px;
+    padding-left: 4px;
+}
+
+#taskbar button,
+#workspaces button {
+    color: @color12;
+    box-shadow: none;
+	text-shadow: none;
+    padding: 4px;
+    border-radius: 9px;
+    animation: gradient_f 20s ease-in infinite;
+    transition: all 0.5s cubic-bezier(.55,-0.68,.48,1.682);
+}
+
+#taskbar button.active,
+#workspaces button.active {
+    color: @foreground;
+    border-radius: 15px 15px 15px 15px;
+    padding-left: 8px;
+    padding-right: 8px;
+    animation: gradient_f 20s ease-in infinite;
+    transition: all 0.3s cubic-bezier(.55,-0.68,.48,1.682);
+}
+
+#workspaces button.focused {
+    color: #d8dee9;
+}
+
+#workspaces button.urgent {
+    color: #11111b;
+    border-radius: 10px;
+}
+
+#taskbar button:hover,
+#workspaces button:hover {
+    color: @color9;
+    border-radius: 15px;
+ 	padding-left: 2px;
+    padding-right: 2px;
+    animation: gradient_f 20s ease-in infinite;
+    transition: all 0.3s cubic-bezier(.55,-0.68,.48,1.682);
+}
+
+#backlight,
+#backlight-slider,
+#battery,
+#bluetooth,
+#clock,
+#cpu,
+#disk,
+#idle_inhibitor,
+#keyboard-state,
+#memory,
+#mode,
+#mpris,
+#network,
+#power-profiles-daemon,
+#pulseaudio,
+#pulseaudio-slider,
+#taskbar,
+#temperature,
+#tray,
+#window,
+#wireplumber,
+#workspaces,
+#custom-backlight,
+#custom-nightlight,
+#custom-browser,
+#custom-cava_mviz,
+#custom-cycle_wall,
+#custom-dot_update,
+#custom-file_manager,
+#custom-keybinds,
+#custom-keyboard,
+#custom-light_dark,
+#custom-nightlight,
+#custom-lock,
+#custom-hint,
+#custom-hypridle,
+#custom-menu,
+#custom-playerctl,
+#custom-power_vertical,
+#custom-power,
+#custom-quit,
+#custom-reboot,
+#custom-settings,
+#custom-spotify,
+#custom-swaync,
+#custom-tty,
+#custom-updater,
+#custom-hyprpicker,
+#custom-weather,
+#custom-weather.clearNight,
+#custom-weather.cloudyFoggyDay,
+#custom-weather.cloudyFoggyNight,
+#custom-weather.default, 
+#custom-weather.rainyDay,
+#custom-weather.rainyNight,
+#custom-weather.severe,
+#custom-weather.showyIcyDay,
+#custom-weather.snowyIcyNight,
+#custom-weather.sunnyDay,
+#custom-news_ribbon {
+    color: @foreground;
+    border-radius: 8px;
+	padding-top: 5px;
+	padding-bottom: 5px;
+	padding-right: 6px;
+	padding-left: 6px;
+}
+
+#temperature.critical {
+    background-color: #ff0000;
+}
+
+@keyframes blink {
+    to {
+        color: #000000;
+    }
+}
+
+/*-----Indicators----*/
+#custom-hypridle.notactive,
+#idle_inhibitor.activated {
+	color: #39FF14;
+    border-bottom: 8px solid rgba(0, 0, 0, 0.2);
+}
+
+#battery.critical:not(.charging) {
+	color: #f53c3c;
+	animation-name: blink;
+	animation-duration: 3.0s;
+	animation-timing-function: steps(12);
+	animation-iteration-count: infinite;
+	animation-direction: alternate;
+}
+
+#backlight-slider slider,
+#pulseaudio-slider slider {
+	min-width: 0px;
+	min-height: 0px;
+	opacity: 0;
+	background-image: none;
+	border: none;
+	box-shadow: none;
+}
+
+#backlight-slider trough,
+#pulseaudio-slider trough {
+	min-width: 80px;
+	min-height: 5px;
+	border-radius: 5px;
+}
+
+#backlight-slider highlight,
+#pulseaudio-slider highlight {
+	min-height: 10px;
+	border-radius: 5px;
+}
+
+/* Custom Modules */
+#custom-audio {
+    color: #00aaff;
+}
+
+#custom-network {
+    color: @foreground;
+}
+
+#custom-network.network-high {
+    color: #ff5555;
+    animation-name: blink;
+    animation-duration: 2.0s;
+    animation-timing-function: linear;
+    animation-iteration-count: infinite;
+    animation-direction: alternate;
+}
+
+#custom-cava_output {
+    color: #cba6f7;
+}
+
+#custom-cava_input {
+    color: #a6e3a1;
+}
+
+#custom-traffic {
+    color: #89dceb;
+}
+
+#custom-traffic.netgraph-high {
+    color: #ff5555;
+}
+
+#custom-news_ribbon {
+    color: #d8f2ff;
+    background: rgba(20, 28, 38, 0.85);
+    border: 1px solid rgba(120, 180, 220, 0.35);
+    border-radius: 12px;
+    padding-left: 14px;
+    padding-right: 14px;
+    min-width: 0;
+}
+
+window#waybar.top .modules-left,
+window#waybar.top .modules-center,
+window#waybar.top .modules-right {
+    padding-left: 0;
+    padding-right: 0;
+}
+
+window#waybar.top #custom-news_ribbon.news-stale {
+    color: #ffd580;
+    border-color: rgba(255, 210, 120, 0.45);
+}
+
+window#waybar.top #custom-news_ribbon.news-error {
+    color: #ff9f9f;
+    border-color: rgba(255, 120, 120, 0.45);
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+/* AUTO-SCALE-LEFT:BEGIN */
+window#waybar.left {
+  font-size: 11px;
+}
+window#waybar.left #custom-traffic {
+  font-size: 10px;
+}
+/* AUTO-SCALE-LEFT:END */
+
+
+
+
+
+
+
+
+
+
+
+
+
+/* ARROWS SIZE OVERRIDE */
+#custom-arrow1,
+#custom-arrow2,
+#custom-arrow3,
+#custom-arrow4,
+#custom-arrow5,
+#custom-arrow6,
+#custom-arrow7,
+#custom-arrow8,
+#custom-arrow9,
+#custom-arrow10 {
+  font-size: 18px;
+}

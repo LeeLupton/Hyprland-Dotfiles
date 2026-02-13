@@ -1,0 +1,208 @@
+/* ---- 💫 https://github.com/JaKooLit 💫 ---- */
+/* Custom Creative Style based on Catppuccin Mocha */
+
+* {
+    /* Using JetBrainsMono Nerd Font, with a fallback */
+	font-family: "JetBrainsMono Nerd Font", "monospace", sans-serif;
+	font-weight: bold;
+	min-height: 0;
+	font-size: 97%;
+	font-feature-settings: '"zero", "ss01", "ss02", "ss03", "ss04", "ss05", "cv31"';
+}
+
+/* Base Catppuccin Mocha variables, adjust colors for 'steeze' */
+@import "../waybar/style/catppuccin-themes/mocha.css";
+
+/* --- Waybar Container Styling --- */
+window#waybar {
+  	/* Modern gradient background for enhanced 'visibility' */
+  	border: none; /* Removed default border for a cleaner look */
+  	border-radius: 15px; /* Slightly more rounded corners */
+  	margin-top: 5px; /* Slightly more space from top */
+  	margin-left: 10px;
+  	margin-right: 10px;
+  	padding: 4px;
+  	transition: background-color 0.5s ease-in-out;
+}
+
+window#waybar.hidden {
+  	opacity: 0.2;
+}
+
+window#waybar.empty {
+    background-color: transparent;
+    border: none;
+    padding: 0px;
+}
+
+/* --- Module Container Styling --- */
+/* This makes each group of modules look more distinct and 'functional' */
+.modules-left, .modules-center, .modules-right {
+ 	background-color: @theme_background_color;
+ 	border: 1px solid @overlay0;
+ 	padding: 6px 8px;
+ 	margin: 2px;
+ 	border-radius: 10px;
+ 	box-shadow: 0 2px 5px rgba(0, 0, 0, 0.3);
+ 	transition: all 0.3s ease-in-out;
+}
+
+/* --- Individual Module Styling --- */
+/* General styling for all modules for consistency */
+#workspaces button,
+#taskbar button,
+#tray > .passive,
+#tray > .needs-attention,
+#clock,
+#cpu,
+#memory,
+#network,
+#pulseaudio,
+#custom-weather,
+#hyprland-window,
+#custom-playerctl,
+#custom-nightlight {
+	padding: 6px 10px;
+	margin: 0 3px;
+	border-radius: 8px;
+	color: @overlay1;
+	transition: all 0.3s ease-in-out;
+	text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
+}
+
+/* Hover effects for 'visibility' and 'steeze' */
+#workspaces button:hover,
+#taskbar button:hover,
+#tray > .passive:hover,
+#tray > .needs-attention:hover,
+#clock:hover,
+#cpu:hover,
+#memory:hover,
+#network:hover,
+#pulseaudio:hover,
+#custom-weather:hover,
+#hyprland-window:hover,
+#custom-playerctl:hover,
+#custom-nightlight:hover {
+	background-color: @surface0;
+	color: @peach;
+	box-shadow: 0 4px 10px rgba(0, 0, 0, 0.4);
+}
+
+/* --- Specific Module Enhancements --- */
+
+/* Workspaces: Make active and urgent states more prominent */
+#workspaces button.active {
+	color: @mauve;
+    background-color: @surface0;
+    box-shadow: 0 0 8px @mauve;
+    padding-left: 12px;
+    padding-right: 12px;
+    animation: pulse 2s infinite;
+}
+
+#workspaces button.urgent {
+	color: @red;
+    background-color: @surface0;
+    box-shadow: 0 0 8px @red;
+    animation: pulse 1.5s infinite;
+}
+
+/* Clock: Enhanced styling for better readability */
+#clock {
+	color: @yellow;
+    padding: 8px 12px;
+    font-size: 110%;
+}
+#clock:hover {
+    background-color: @surface1;
+}
+
+/* CPU & Memory: Add subtle color changes or indicators */
+#cpu {
+    color: @green;
+}
+#cpu:hover {
+    background-color: @surface0;
+    color: @green;
+}
+
+#memory {
+    color: @sky;
+}
+#memory:hover {
+    background-color: @surface0;
+    color: @sky;
+}
+
+/* Network: Clearer disconnected/disabled states */
+#network.disconnected,
+#network.disabled {
+  background-color: @surface0;
+  color: @red;
+  border-radius: 8px;
+}
+
+/* Custom Player Control: More interactive */
+#custom-playerctl {
+    color: @pink;
+}
+#custom-playerctl:hover {
+    background-color: @surface0;
+    color: @pink;
+}
+
+/* Night Light: Distinct icon and hover */
+#custom-nightlight {
+    color: @lavender;
+}
+#custom-nightlight:hover {
+    background-color: @surface0;
+    color: @lavender;
+}
+
+/* Add subtle animations for 'steeze' */
+/*@keyframes pulse { */
+/*    0% { transform: scale(1); } */
+/*    50% { transform: scale(1.1); } */
+/*    100% { transform: scale(1); } */
+/*} */
+
+/* Separators: Make them visually less intrusive but functional */
+.separator {
+    color: @overlay0;
+    padding: 0 5px;
+    font-size: 1.2em;
+}
+
+/* Specific module styling overrides for better integration */
+#tray {
+    padding-right: 0px;
+}
+#tray > .passive {
+    color: @overlay1;
+    margin-right: 4px;
+}
+#tray > .needs-attention {
+    color: @red;
+    margin-right: 4px;
+}
+
+/* Ensure modules within groups are styled well */
+.modules-center #hyprland-workspaces.rw button {
+    padding: 6px 10px;
+    margin: 0 3px;
+    border-radius: 8px;
+    color: @overlay1;
+    transition: all 0.3s ease-in-out;
+}
+.modules-center #hyprland-workspaces.rw button.active {
+    color: @mauve;
+    background-color: @surface0;
+    box-shadow: 0 0 8px @mauve;
+    padding-left: 12px;
+    padding-right: 12px;
+}
+.modules-center #hyprland-workspaces.rw button.urgent {
+    color: @red;
+}

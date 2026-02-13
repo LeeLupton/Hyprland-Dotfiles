@@ -1,0 +1,13 @@
+[Unit]
+Description=Tether Peg Monitor
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/home/lee/.gemini/antigravity/scratch/tether-peg-monitor
+ExecStart=/usr/bin/python tether_monitor.py
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=default.target
