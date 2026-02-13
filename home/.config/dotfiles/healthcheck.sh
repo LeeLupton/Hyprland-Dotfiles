@@ -270,8 +270,10 @@ render_gif_block() {
   local mode="${2:-static}"
   local place_arg="${3:-}"
   local icat_engine="builtin"
+  local tty_out="/dev/tty"
   [[ -n "$gif_path" ]] || return 0
   [[ -t 1 ]] || return 0
+  [[ -w "$tty_out" ]] || tty_out="/proc/self/fd/1"
 
   if command -v magick >/dev/null 2>&1 || command -v convert >/dev/null 2>&1; then
     icat_engine="magick"
@@ -281,11 +283,11 @@ render_gif_block() {
     # Kitty ships the image protocol client, so this works without extra installs.
     if [[ "$mode" == "tui" ]]; then
       [[ -n "$place_arg" ]] || return 1
-      kitten icat --clear --silent >/dev/null 2>&1 || true
-      kitten icat --silent --stdin=no --transfer-mode=stream --engine="$icat_engine" --z-index=0 --place "$place_arg" --loop -1 "$gif_path" >/dev/null 2>&1 &
+      kitten icat --clear --silent >"$tty_out" 2>/dev/null || true
+      kitten icat --silent --stdin=no --engine="$icat_engine" --z-index=0 --place "$place_arg" --loop -1 "$gif_path" >"$tty_out" 2>/dev/null &
       GIF_PID="$!"
       return 0
-    elif kitten icat --silent --stdin=no --engine="$icat_engine" "$gif_path" 2>/dev/null; then
+    elif kitten icat --silent --stdin=no --engine="$icat_engine" "$gif_path" >"$tty_out" 2>/dev/null; then
       return 0
     fi
   fi
