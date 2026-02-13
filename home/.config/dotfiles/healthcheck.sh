@@ -49,6 +49,15 @@ else
 fi
 
 LEFT_PANE_WIDTH=78
+GRAPH_MODE="ascii"
+BAR_FILL="#"
+BAR_EMPTY="."
+
+if locale charmap 2>/dev/null | grep -qi 'utf-8'; then
+  GRAPH_MODE="unicode"
+  BAR_FILL="█"
+  BAR_EMPTY="░"
+fi
 
 fit_text() {
   local text="$1"
@@ -141,6 +150,8 @@ hist_mem=""
 hist_gpu=""
 hist_net=""
 HIST_LEN=28
+top_procs=""
+DASH_INIT=0
 
 append_hist() {
   local current="$1"
@@ -157,31 +168,73 @@ append_hist() {
   echo "$current"
 }
 
+graph_char() {
+  local level="$1"
+  local mode="${2:-unicode}"
+  (( level < 0 )) && level=0
+  (( level > 8 )) && level=8
+  if [[ "$mode" == "ascii" ]]; then
+    case "$level" in
+      0) printf " " ;;
+      1) printf "." ;;
+      2) printf ":" ;;
+      3) printf "-" ;;
+      4) printf "=" ;;
+      5) printf "+" ;;
+      6) printf "*" ;;
+      7) printf "#" ;;
+      *) printf "@" ;;
+    esac
+  else
+    case "$level" in
+      0) printf " " ;;
+      1) printf "▁" ;;
+      2) printf "▂" ;;
+      3) printf "▃" ;;
+      4) printf "▄" ;;
+      5) printf "▅" ;;
+      6) printf "▆" ;;
+      7) printf "▇" ;;
+      *) printf "█" ;;
+    esac
+  fi
+}
+
 hist_graph() {
   local data="$1"
+  local width="${2:-28}"
+  local mode="${3:-unicode}"
   local out=""
-  local v idx
-  # 10-level ASCII ramp for terminal-safe sparkline.
-  local ramp=" .:-=+*#%@"
-  for v in $data; do
-    idx=$(( (v * 9 + 50) / 100 ))
-    (( idx < 0 )) && idx=0
-    (( idx > 9 )) && idx=9
-    out="${out}${ramp:idx:1}"
+  local -a vals
+  local count i src_idx v level
+  read -r -a vals <<<"$data"
+  count="${#vals[@]}"
+  for ((i = 0; i < width; i++)); do
+    if (( count == 0 )); then
+      v=0
+    else
+      src_idx=$(( i * count / width ))
+      (( src_idx >= count )) && src_idx=$((count - 1))
+      v="${vals[$src_idx]}"
+    fi
+    level=$(( (v * 8 + 50) / 100 ))
+    out+=$(graph_char "$level" "$mode")
   done
-  echo "$out"
+  printf "%s" "$out"
 }
 
 percent_bar() {
   local pct="$1"
   local width="${2:-18}"
+  local fill_char="${3:-#}"
+  local empty_char="${4:-.}"
   local filled
   local out=""
   (( pct < 0 )) && pct=0
   (( pct > 100 )) && pct=100
   filled=$(( (pct * width + 50) / 100 ))
-  out="$(printf "%${filled}s" "" | tr ' ' '#')"
-  out="${out}$(printf "%$((width - filled))s" "" | tr ' ' '.')"
+  out="$(printf "%${filled}s" "" | tr ' ' "$fill_char")"
+  out="${out}$(printf "%$((width - filled))s" "" | tr ' ' "$empty_char")"
   echo "$out"
 }
 
@@ -308,6 +361,15 @@ sample_live_metrics() {
   hist_cpu="$(append_hist "$hist_cpu" "$cpu_usage_pct" "$HIST_LEN")"
   hist_mem="$(append_hist "$hist_mem" "$mem_usage_pct" "$HIST_LEN")"
   hist_gpu="$(append_hist "$hist_gpu" "$gpu_usage_pct" "$HIST_LEN")"
+
+  if command -v ps >/dev/null 2>&1; then
+    top_procs="$(
+      ps -eo pid=,pcpu=,pmem=,comm= --sort=-pcpu 2>/dev/null | head -n 7 | tail -n +2 \
+      | awk '{printf "%5s %5s%% %5s%%  %s\n", $1, $2, $3, $4}'
+    )"
+  else
+    top_procs="ps unavailable"
+  fi
 }
 
 prime_live_metrics() {
@@ -605,6 +667,7 @@ render_tui_dashboard() {
   local panel_h1 panel_h2 panel_h3
   local graph_cpu graph_mem graph_gpu graph_net
   local cpu_line mem_line_live gpu_line net_line
+  local chart_w process_row
 
   cols="$(tput cols 2>/dev/null || echo 120)"
   lines="$(tput lines 2>/dev/null || echo 40)"
@@ -624,21 +687,26 @@ render_tui_dashboard() {
   panel_h3=$(( lines - panel_h1 - panel_h2 - 2 ))
   (( panel_h3 < 8 )) && panel_h3=8
 
-  graph_cpu="$(hist_graph "$hist_cpu")"
-  graph_mem="$(hist_graph "$hist_mem")"
-  graph_gpu="$(hist_graph "$hist_gpu")"
-  graph_net="$(hist_graph "$hist_net")"
+  chart_w=$(( right_w - 8 ))
+  (( chart_w < 12 )) && chart_w=12
+  graph_cpu="$(hist_graph "$hist_cpu" "$chart_w" "$GRAPH_MODE")"
+  graph_mem="$(hist_graph "$hist_mem" "$chart_w" "$GRAPH_MODE")"
+  graph_gpu="$(hist_graph "$hist_gpu" "$chart_w" "$GRAPH_MODE")"
+  graph_net="$(hist_graph "$hist_net" "$chart_w" "$GRAPH_MODE")"
 
-  cpu_line="$(printf "[%s] %3d%%  %s  %s" "$(percent_bar "$cpu_usage_pct" 14)" "$cpu_usage_pct" "${cpu_freq_mhz}MHz" "$cpu_voltage_v")"
-  mem_line_live="$(printf "[%s] %3d%%" "$(percent_bar "$mem_usage_pct" 14)" "$mem_usage_pct")"
-  gpu_line="$(printf "[%s] %3d%% VRAM:%3d%% %s %s %s" "$(percent_bar "$gpu_usage_pct" 14)" "$gpu_usage_pct" "$gpu_mem_pct" "$gpu_temp_c" "$gpu_power_w" "$gpu_clock_mhz")"
+  cpu_line="$(printf "[%s] %3d%%  %s  %s" "$(percent_bar "$cpu_usage_pct" 14 "$BAR_FILL" "$BAR_EMPTY")" "$cpu_usage_pct" "${cpu_freq_mhz}MHz" "$cpu_voltage_v")"
+  mem_line_live="$(printf "[%s] %3d%%" "$(percent_bar "$mem_usage_pct" 14 "$BAR_FILL" "$BAR_EMPTY")" "$mem_usage_pct")"
+  gpu_line="$(printf "[%s] %3d%% VRAM:%3d%% %s %s %s" "$(percent_bar "$gpu_usage_pct" 14 "$BAR_FILL" "$BAR_EMPTY")" "$gpu_usage_pct" "$gpu_mem_pct" "$gpu_temp_c" "$gpu_power_w" "$gpu_clock_mhz")"
   net_line="RX $(format_bps "$net_rx_rate_bps") | TX $(format_bps "$net_tx_rate_bps")"
 
-  printf "\033[H\033[2J"
-  draw_box "$left_x" "$top_y" "$left_w" "$panel_h1" "RICEFETCH CORE"
-  draw_box "$left_x" "$((top_y + panel_h1))" "$left_w" "$panel_h2" "SESSION / HARDWARE"
-  draw_box "$left_x" "$((top_y + panel_h1 + panel_h2))" "$left_w" "$panel_h3" "LIVE TELEMETRY"
-  draw_box "$right_x" "$top_y" "$right_w" "$lines" "RICE-CHECK :: DASHBOARD  (q to quit)"
+  if (( DASH_INIT == 0 )); then
+    printf "\033[H\033[2J"
+    draw_box "$left_x" "$top_y" "$left_w" "$panel_h1" "RICEFETCH CORE"
+    draw_box "$left_x" "$((top_y + panel_h1))" "$left_w" "$panel_h2" "SESSION / HARDWARE"
+    draw_box "$left_x" "$((top_y + panel_h1 + panel_h2))" "$left_w" "$panel_h3" "LIVE TELEMETRY"
+    draw_box "$right_x" "$top_y" "$right_w" "$lines" "RICE-CHECK :: DASHBOARD  (q to quit)"
+    DASH_INIT=1
+  fi
 
   box_line "$((left_x + 2))" "$((top_y + 1))" "$((left_w - 4))" "OS: $os_name"
   box_line "$((left_x + 2))" "$((top_y + 2))" "$((left_w - 4))" "Host: $host"
@@ -671,15 +739,22 @@ render_tui_dashboard() {
   box_line "$((left_x + 2))" "$((top_y + panel_h1 + panel_h2 + 8))" "$((left_w - 4))" "GPU graph: $graph_gpu"
   box_line "$((left_x + 2))" "$((top_y + panel_h1 + panel_h2 + 9))" "$((left_w - 4))" "NET graph: $graph_net"
 
-  box_line "$((right_x + 2))" "$((top_y + 2))" "$((right_w - 4))" "RICEFETCH METRICS"
-  box_line "$((right_x + 2))" "$((top_y + 4))" "$((right_w - 4))" "CPU $graph_cpu"
-  box_line "$((right_x + 2))" "$((top_y + 5))" "$((right_w - 4))" "MEM $graph_mem"
-  box_line "$((right_x + 2))" "$((top_y + 6))" "$((right_w - 4))" "GPU $graph_gpu"
-  box_line "$((right_x + 2))" "$((top_y + 7))" "$((right_w - 4))" "NET $graph_net"
-  box_line "$((right_x + 2))" "$((top_y + 10))" "$((right_w - 4))" "GPU temp: $gpu_temp_c   power: $gpu_power_w   clock: $gpu_clock_mhz"
-  box_line "$((right_x + 2))" "$((top_y + 12))" "$((right_w - 4))" "NVIDIA: $(fit_text "$nvidia_summary" "$((right_w - 14))")"
-  box_line "$((right_x + 2))" "$((top_y + 14))" "$((right_w - 4))" "NPU: vendor=${DOTFILES_NPU_VENDOR:-unknown} driver=${DOTFILES_NPU_DRIVER:-unknown}"
-  box_line "$((right_x + 2))" "$((top_y + 16))" "$((right_w - 4))" "Tip: run rice-autodetect after hardware changes"
+  box_line "$((right_x + 2))" "$((top_y + 2))" "$((right_w - 4))" "CPU  ${cpu_usage_pct}%  ${cpu_freq_mhz}MHz  ${cpu_voltage_v}"
+  box_line "$((right_x + 2))" "$((top_y + 3))" "$((right_w - 4))" "$graph_cpu"
+  box_line "$((right_x + 2))" "$((top_y + 5))" "$((right_w - 4))" "MEM  ${mem_usage_pct}%"
+  box_line "$((right_x + 2))" "$((top_y + 6))" "$((right_w - 4))" "$graph_mem"
+  box_line "$((right_x + 2))" "$((top_y + 8))" "$((right_w - 4))" "GPU  ${gpu_usage_pct}%  VRAM ${gpu_mem_pct}%  ${gpu_temp_c}  ${gpu_power_w}"
+  box_line "$((right_x + 2))" "$((top_y + 9))" "$((right_w - 4))" "$graph_gpu"
+  box_line "$((right_x + 2))" "$((top_y + 11))" "$((right_w - 4))" "NET  $net_line"
+  box_line "$((right_x + 2))" "$((top_y + 12))" "$((right_w - 4))" "$graph_net"
+  box_line "$((right_x + 2))" "$((top_y + 14))" "$((right_w - 4))" "TOP PROCESSES (CPU)"
+  box_line "$((right_x + 2))" "$((top_y + 15))" "$((right_w - 4))" "  PID   CPU   MEM   CMD"
+  process_row=$((top_y + 16))
+  while IFS= read -r pline; do
+    (( process_row >= top_y + lines - 1 )) && break
+    box_line "$((right_x + 2))" "$process_row" "$((right_w - 4))" "$pline"
+    process_row=$((process_row + 1))
+  done <<<"$top_procs"
 }
 
 render_tui() {
@@ -689,6 +764,7 @@ render_tui() {
   tput smcup 2>/dev/null || true
   trap '[[ -n "$GIF_PID" ]] && kill "$GIF_PID" >/dev/null 2>&1 || true; kitten icat --clear --silent >/dev/null 2>&1 || true; tput rmcup 2>/dev/null || true; tput cnorm 2>/dev/null || true; printf "\n"' EXIT INT TERM
 
+  DASH_INIT=0
   gather_data
   prime_live_metrics
   render_tui_dashboard
