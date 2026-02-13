@@ -558,29 +558,132 @@ render_static() {
   render_body
 }
 
-render_tui() {
-  local gif_path
-  local tick=0
-  local body_row=3
-  local cols lines left_width gif_left gif_top gif_w gif_h gif_place
-  local row
-  gif_path="$(resolve_gif_path)"
+pad_fit() {
+  local text="$1"
+  local width="$2"
+  local out
+  out="$(fit_text "$text" "$width")"
+  printf "%-*s" "$width" "$out"
+}
+
+draw_box() {
+  local x="$1"
+  local y="$2"
+  local w="$3"
+  local h="$4"
+  local title="$5"
+  local i
+  local inner_w=$((w - 2))
+  [[ "$w" -lt 6 || "$h" -lt 3 ]] && return
+
+  printf "\033[%d;%dH+" "$y" "$x"
+  printf "%s" "$(printf '%*s' "$inner_w" '' | tr ' ' '-')"
+  printf "+"
+  for ((i = 1; i < h - 1; i++)); do
+    printf "\033[%d;%dH|%*s|" "$((y + i))" "$x" "$inner_w" ""
+  done
+  printf "\033[%d;%dH+" "$((y + h - 1))" "$x"
+  printf "%s" "$(printf '%*s' "$inner_w" '' | tr ' ' '-')"
+  printf "+"
+  if [[ -n "$title" ]]; then
+    printf "\033[%d;%dH%b%s%b" "$y" "$((x + 2))" "$C1" "$(fit_text "$title" "$((w - 6))")" "$C0"
+  fi
+}
+
+box_line() {
+  local x="$1"
+  local y="$2"
+  local w="$3"
+  local line="$4"
+  printf "\033[%d;%dH%s" "$y" "$x" "$(pad_fit "$line" "$w")"
+}
+
+render_tui_dashboard() {
+  local cols lines
+  local left_x right_x top_y
+  local left_w right_w
+  local panel_h1 panel_h2 panel_h3
+  local graph_cpu graph_mem graph_gpu graph_net
+  local cpu_line mem_line_live gpu_line net_line
+
   cols="$(tput cols 2>/dev/null || echo 120)"
   lines="$(tput lines 2>/dev/null || echo 40)"
+  (( cols < 100 )) && cols=100
+  (( lines < 32 )) && lines=32
 
-  left_width=$(( cols * 45 / 100 ))
-  (( left_width < 62 )) && left_width=62
-  (( left_width > 100 )) && left_width=100
-  LEFT_PANE_WIDTH="$left_width"
-  gif_left=$(( left_width + 2 ))
-  gif_top=2
-  gif_w=$(( cols - gif_left - 1 ))
-  gif_h=$(( lines - 4 ))
-  if (( gif_w < 18 || gif_h < 8 )); then
-    gif_place=""
-  else
-    gif_place="${gif_w}x${gif_h}@${gif_left}x${gif_top}"
-  fi
+  left_x=1
+  top_y=1
+  left_w=$(( cols * 48 / 100 ))
+  (( left_w < 54 )) && left_w=54
+  (( left_w > cols - 44 )) && left_w=$((cols - 44))
+  right_x=$(( left_x + left_w + 1 ))
+  right_w=$(( cols - left_w - 1 ))
+
+  panel_h1=12
+  panel_h2=12
+  panel_h3=$(( lines - panel_h1 - panel_h2 - 2 ))
+  (( panel_h3 < 8 )) && panel_h3=8
+
+  graph_cpu="$(hist_graph "$hist_cpu")"
+  graph_mem="$(hist_graph "$hist_mem")"
+  graph_gpu="$(hist_graph "$hist_gpu")"
+  graph_net="$(hist_graph "$hist_net")"
+
+  cpu_line="$(printf "[%s] %3d%%  %s  %s" "$(percent_bar "$cpu_usage_pct" 14)" "$cpu_usage_pct" "${cpu_freq_mhz}MHz" "$cpu_voltage_v")"
+  mem_line_live="$(printf "[%s] %3d%%" "$(percent_bar "$mem_usage_pct" 14)" "$mem_usage_pct")"
+  gpu_line="$(printf "[%s] %3d%% VRAM:%3d%% %s %s %s" "$(percent_bar "$gpu_usage_pct" 14)" "$gpu_usage_pct" "$gpu_mem_pct" "$gpu_temp_c" "$gpu_power_w" "$gpu_clock_mhz")"
+  net_line="RX $(format_bps "$net_rx_rate_bps") | TX $(format_bps "$net_tx_rate_bps")"
+
+  printf "\033[H\033[2J"
+  draw_box "$left_x" "$top_y" "$left_w" "$panel_h1" "RICEFETCH CORE"
+  draw_box "$left_x" "$((top_y + panel_h1))" "$left_w" "$panel_h2" "SESSION / HARDWARE"
+  draw_box "$left_x" "$((top_y + panel_h1 + panel_h2))" "$left_w" "$panel_h3" "LIVE TELEMETRY"
+  draw_box "$right_x" "$top_y" "$right_w" "$lines" "RICE-CHECK :: DASHBOARD  (q to quit)"
+
+  box_line "$((left_x + 2))" "$((top_y + 1))" "$((left_w - 4))" "OS: $os_name"
+  box_line "$((left_x + 2))" "$((top_y + 2))" "$((left_w - 4))" "Host: $host"
+  box_line "$((left_x + 2))" "$((top_y + 3))" "$((left_w - 4))" "Kernel: $kernel"
+  box_line "$((left_x + 2))" "$((top_y + 4))" "$((left_w - 4))" "Uptime: $uptime_human"
+  box_line "$((left_x + 2))" "$((top_y + 5))" "$((left_w - 4))" "WM/DE: $wm_name"
+  box_line "$((left_x + 2))" "$((top_y + 6))" "$((left_w - 4))" "CPU: $cpu_model"
+  box_line "$((left_x + 2))" "$((top_y + 7))" "$((left_w - 4))" "Memory: $mem_line"
+  box_line "$((left_x + 2))" "$((top_y + 8))" "$((left_w - 4))" "Packages: $pkg_count"
+  box_line "$((left_x + 2))" "$((top_y + 9))" "$((left_w - 4))" "GPU pref: ${DOTFILES_GPU_VENDOR:-unknown}"
+  box_line "$((left_x + 2))" "$((top_y + 10))" "$((left_w - 4))" "NPU ready: ${DOTFILES_NPU_READY:-unknown}"
+
+  box_line "$((left_x + 2))" "$((top_y + panel_h1 + 1))" "$((left_w - 4))" "Session: $session_type | Desktop: $desktop"
+  box_line "$((left_x + 2))" "$((top_y + panel_h1 + 2))" "$((left_w - 4))" "Hyprland env: $hypr_env | hyprctl: $hyprctl_state"
+  box_line "$((left_x + 2))" "$((top_y + panel_h1 + 3))" "$((left_w - 4))" "waybar: $waybar_state | portal: $portal_state"
+  box_line "$((left_x + 2))" "$((top_y + panel_h1 + 4))" "$((left_w - 4))" "DM: ${DOTFILES_DISPLAY_MANAGER:-unknown} | Lock: ${DOTFILES_LOCK_MANAGER:-unknown}"
+  box_line "$((left_x + 2))" "$((top_y + panel_h1 + 5))" "$((left_w - 4))" "Net iface: ${DOTFILES_DEFAULT_IFACE:-unknown}"
+  box_line "$((left_x + 2))" "$((top_y + panel_h1 + 6))" "$((left_w - 4))" "Voice: ${DOTFILES_VOICE_SOURCE:-unknown}"
+  box_line "$((left_x + 2))" "$((top_y + panel_h1 + 7))" "$((left_w - 4))" "GPU modules: $gpu_modules"
+  box_line "$((left_x + 2))" "$((top_y + panel_h1 + 8))" "$((left_w - 4))" "NVIDIA use: $nvidia_usage"
+  box_line "$((left_x + 2))" "$((top_y + panel_h1 + 9))" "$((left_w - 4))" "NPU modules: $npu_mods"
+  box_line "$((left_x + 2))" "$((top_y + panel_h1 + 10))" "$((left_w - 4))" "/dev/accel: $accel_nodes"
+
+  box_line "$((left_x + 2))" "$((top_y + panel_h1 + panel_h2 + 1))" "$((left_w - 4))" "CPU  $cpu_line"
+  box_line "$((left_x + 2))" "$((top_y + panel_h1 + panel_h2 + 2))" "$((left_w - 4))" "MEM  $mem_line_live"
+  box_line "$((left_x + 2))" "$((top_y + panel_h1 + panel_h2 + 3))" "$((left_w - 4))" "GPU  $gpu_line"
+  box_line "$((left_x + 2))" "$((top_y + panel_h1 + panel_h2 + 4))" "$((left_w - 4))" "NET  $net_line"
+  box_line "$((left_x + 2))" "$((top_y + panel_h1 + panel_h2 + 6))" "$((left_w - 4))" "CPU graph: $graph_cpu"
+  box_line "$((left_x + 2))" "$((top_y + panel_h1 + panel_h2 + 7))" "$((left_w - 4))" "MEM graph: $graph_mem"
+  box_line "$((left_x + 2))" "$((top_y + panel_h1 + panel_h2 + 8))" "$((left_w - 4))" "GPU graph: $graph_gpu"
+  box_line "$((left_x + 2))" "$((top_y + panel_h1 + panel_h2 + 9))" "$((left_w - 4))" "NET graph: $graph_net"
+
+  box_line "$((right_x + 2))" "$((top_y + 2))" "$((right_w - 4))" "RICEFETCH METRICS"
+  box_line "$((right_x + 2))" "$((top_y + 4))" "$((right_w - 4))" "CPU $graph_cpu"
+  box_line "$((right_x + 2))" "$((top_y + 5))" "$((right_w - 4))" "MEM $graph_mem"
+  box_line "$((right_x + 2))" "$((top_y + 6))" "$((right_w - 4))" "GPU $graph_gpu"
+  box_line "$((right_x + 2))" "$((top_y + 7))" "$((right_w - 4))" "NET $graph_net"
+  box_line "$((right_x + 2))" "$((top_y + 10))" "$((right_w - 4))" "GPU temp: $gpu_temp_c   power: $gpu_power_w   clock: $gpu_clock_mhz"
+  box_line "$((right_x + 2))" "$((top_y + 12))" "$((right_w - 4))" "NVIDIA: $(fit_text "$nvidia_summary" "$((right_w - 14))")"
+  box_line "$((right_x + 2))" "$((top_y + 14))" "$((right_w - 4))" "NPU: vendor=${DOTFILES_NPU_VENDOR:-unknown} driver=${DOTFILES_NPU_DRIVER:-unknown}"
+  box_line "$((right_x + 2))" "$((top_y + 16))" "$((right_w - 4))" "Tip: run rice-autodetect after hardware changes"
+}
+
+render_tui() {
+  local tick=0
 
   tput civis 2>/dev/null || true
   tput smcup 2>/dev/null || true
@@ -588,28 +691,14 @@ render_tui() {
 
   gather_data
   prime_live_metrics
-  printf "\033[H\033[J"
-  print_header "RICE-CHECK :: RICEFETCH"
-  printf "%b%s%b\n" "$C1" "$(fit_text "RICE-CHECK GIF CORE  (q to quit) | left metrics / right gif" "$left_width")" "$C0"
-  print_sep
-  if [[ "$ANIMATE" -eq 1 ]] && [[ -n "$gif_place" ]]; then
-    render_gif_block "$gif_path" "tui" "$gif_place"
-  elif [[ "$ANIMATE" -eq 1 ]]; then
-    printf "%b%s%b\n" "$C3" "terminal too small for GIF pane; enlarge window for animation" "$C0"
-  fi
-  printf "\033[%d;1H" "$body_row"
-  render_body
+  render_tui_dashboard
 
   while true; do
-    # refresh metrics every ~1s without re-sending the GIF
+    # refresh metrics every ~1s
     if (( tick % 10 == 0 )); then
       gather_data
       sample_live_metrics
-      for ((row = body_row; row <= lines; row++)); do
-        printf "\033[%d;1H%-*s" "$row" "$left_width" ""
-      done
-      printf "\033[%d;1H" "$body_row"
-      render_body
+      render_tui_dashboard
     fi
 
     # non-blocking key read
