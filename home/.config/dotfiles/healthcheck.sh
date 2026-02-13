@@ -9,6 +9,7 @@ PLAIN=0
 SHOW_RICEFETCH=1
 ONCE=0
 REFRESH_SECS=0.10
+GIF_PID=""
 GIF_PATH_PRIMARY="$HOME/dot-files/assets/mcmoney.gif"
 GIF_PATH_FALLBACK="/home/lee/Pictures/mcmoney.gif"
 
@@ -266,12 +267,17 @@ render_body() {
 
 render_gif_block() {
   local gif_path="$1"
+  local mode="${2:-static}"
   [[ -n "$gif_path" ]] || return 0
   [[ -t 1 ]] || return 0
 
   if command -v kitten >/dev/null 2>&1 && [[ -n "${KITTY_WINDOW_ID:-}" ]]; then
     # Kitty ships the image protocol client, so this works without extra installs.
-    if kitten icat --silent --stdin=no "$gif_path" 2>/dev/null; then
+    if [[ "$mode" == "tui" ]]; then
+      kitten icat --silent --stdin=no --loop -1 "$gif_path" >/dev/null 2>&1 &
+      GIF_PID="$!"
+      return 0
+    elif kitten icat --silent --stdin=no "$gif_path" 2>/dev/null; then
       return 0
     fi
   fi
@@ -302,26 +308,34 @@ render_static() {
 render_tui() {
   local gif_path
   local tick=0
+  local body_row=1
   gif_path="$(resolve_gif_path)"
 
   tput civis 2>/dev/null || true
   tput smcup 2>/dev/null || true
-  trap 'tput rmcup 2>/dev/null || true; tput cnorm 2>/dev/null || true; printf "\n"' EXIT INT TERM
+  trap '[[ -n "$GIF_PID" ]] && kill "$GIF_PID" >/dev/null 2>&1 || true; kitten icat --clear --silent >/dev/null 2>&1 || true; tput rmcup 2>/dev/null || true; tput cnorm 2>/dev/null || true; printf "\n"' EXIT INT TERM
 
   gather_data
+  printf "\033[H\033[J"
+  printf "%b%s%b\n" "$C1" "RICE-CHECK :: RICEFETCH" "$C0"
+  printf "%b%s%b\n" "$C1" "RICE-CHECK GIF CORE  (q to quit)" "$C0"
+  if [[ "$ANIMATE" -eq 1 ]]; then
+    render_gif_block "$gif_path" "tui"
+  fi
+  # Leave space under the GIF panel before metrics body.
+  printf "\n"
+  body_row="$(tput lines 2>/dev/null || echo 40)"
+  body_row=$(( body_row > 30 ? 16 : 14 ))
+  printf "\033[%d;1H" "$body_row"
+  render_body
+
   while true; do
-    # refresh expensive probes every ~1s (10 frames by default)
+    # refresh metrics every ~1s without re-sending the GIF
     if (( tick % 10 == 0 )); then
       gather_data
+      printf "\033[%d;1H\033[J" "$body_row"
+      render_body
     fi
-
-    printf "\033[H\033[J"
-    printf "%b%s%b\n" "$C1" "RICE-CHECK :: RICEFETCH" "$C0"
-    printf "%b%s%b\n" "$C1" "RICE-CHECK GIF CORE  (q to quit)" "$C0"
-    if [[ "$ANIMATE" -eq 1 ]]; then
-      render_gif_block "$gif_path"
-    fi
-    render_body
 
     # non-blocking key read
     if read -rsn1 -t "$REFRESH_SECS" key; then
