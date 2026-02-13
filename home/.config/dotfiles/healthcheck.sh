@@ -87,6 +87,203 @@ npu_pci=""
 npu_mods="none"
 accel_nodes="none"
 
+# live telemetry state
+cpu_prev_total=0
+cpu_prev_idle=0
+cpu_usage_pct=0
+cpu_freq_mhz=0
+cpu_voltage_v="n/a"
+mem_usage_pct=0
+gpu_usage_pct=0
+gpu_mem_pct=0
+gpu_temp_c="n/a"
+gpu_power_w="n/a"
+gpu_clock_mhz="n/a"
+net_rx_rate_bps=0
+net_tx_rate_bps=0
+net_prev_rx=0
+net_prev_tx=0
+hist_cpu=""
+hist_mem=""
+hist_gpu=""
+hist_net=""
+HIST_LEN=28
+
+append_hist() {
+  local current="$1"
+  local value="$2"
+  local max_len="$3"
+  current="${current} ${value}"
+  current="$(echo "$current" | awk '{$1=$1; print}')"
+  local count
+  count="$(wc -w <<<"$current" | tr -d ' ')"
+  while (( count > max_len )); do
+    current="${current#* }"
+    count=$((count - 1))
+  done
+  echo "$current"
+}
+
+hist_graph() {
+  local data="$1"
+  local out=""
+  local v idx
+  # 10-level ASCII ramp for terminal-safe sparkline.
+  local ramp=" .:-=+*#%@"
+  for v in $data; do
+    idx=$(( (v * 9 + 50) / 100 ))
+    (( idx < 0 )) && idx=0
+    (( idx > 9 )) && idx=9
+    out="${out}${ramp:idx:1}"
+  done
+  echo "$out"
+}
+
+percent_bar() {
+  local pct="$1"
+  local width="${2:-18}"
+  local filled
+  local out=""
+  (( pct < 0 )) && pct=0
+  (( pct > 100 )) && pct=100
+  filled=$(( (pct * width + 50) / 100 ))
+  out="$(printf "%${filled}s" "" | tr ' ' '#')"
+  out="${out}$(printf "%$((width - filled))s" "" | tr ' ' '.')"
+  echo "$out"
+}
+
+format_bps() {
+  local bps="$1"
+  if (( bps >= 1000000000 )); then
+    awk -v v="$bps" 'BEGIN{printf "%.2f Gbps", v/1000000000}'
+  elif (( bps >= 1000000 )); then
+    awk -v v="$bps" 'BEGIN{printf "%.2f Mbps", v/1000000}'
+  elif (( bps >= 1000 )); then
+    awk -v v="$bps" 'BEGIN{printf "%.1f Kbps", v/1000}'
+  else
+    printf "%d bps" "$bps"
+  fi
+}
+
+detect_cpu_voltage() {
+  local p raw
+  for p in /sys/class/hwmon/hwmon*/in*_input; do
+    [[ -r "$p" ]] || continue
+    raw="$(cat "$p" 2>/dev/null || true)"
+    [[ "$raw" =~ ^[0-9]+$ ]] || continue
+    if (( raw >= 300 && raw <= 3000 )); then
+      awk -v mv="$raw" 'BEGIN{printf "%.3fV", mv/1000}'
+      return
+    fi
+  done
+  echo "n/a"
+}
+
+sample_live_metrics() {
+  local iface now_rx now_tx
+  local prev_total prev_idle total idle d_total d_idle usage
+  local net_bps total_kb avail_kb
+
+  if read -r _ _ _ _ user nice sys idle iowait irq softirq steal _ < /proc/stat; then
+    total=$((user + nice + sys + idle + iowait + irq + softirq + steal))
+    idle=$((idle + iowait))
+    prev_total="$cpu_prev_total"
+    prev_idle="$cpu_prev_idle"
+    cpu_prev_total="$total"
+    cpu_prev_idle="$idle"
+    if (( prev_total > 0 && total > prev_total )); then
+      d_total=$((total - prev_total))
+      d_idle=$((idle - prev_idle))
+      usage=$(( (100 * (d_total - d_idle)) / d_total ))
+      (( usage < 0 )) && usage=0
+      (( usage > 100 )) && usage=100
+      cpu_usage_pct="$usage"
+    fi
+  fi
+
+  if [[ -r /proc/meminfo ]]; then
+    mem_usage_pct="$(awk '/MemTotal/ {t=$2} /MemAvailable/ {a=$2} END {if(t>0){u=t-a; printf "%d", (u*100)/t} else print 0}' /proc/meminfo)"
+  fi
+
+  if [[ -r /sys/devices/system/cpu/cpu0/cpufreq/scaling_cur_freq ]]; then
+    cpu_freq_mhz="$(awk '{printf "%d", $1/1000}' /sys/devices/system/cpu/cpu0/cpufreq/scaling_cur_freq 2>/dev/null || echo 0)"
+  else
+    cpu_freq_mhz="$(awk -F: '/cpu MHz/ {sum+=$2; n++} END {if(n>0) printf "%d", sum/n; else print 0}' /proc/cpuinfo 2>/dev/null)"
+  fi
+  cpu_voltage_v="$(detect_cpu_voltage)"
+
+  if command -v nvidia-smi >/dev/null 2>&1; then
+    local nv
+    nv="$(nvidia-smi --query-gpu=utilization.gpu,memory.used,memory.total,temperature.gpu,power.draw,clocks.current.graphics --format=csv,noheader,nounits 2>/dev/null | head -n1 || true)"
+    if [[ -n "$nv" ]]; then
+      gpu_usage_pct="$(echo "$nv" | awk -F, '{gsub(/ /,"",$1); print int($1)}')"
+      local mem_used mem_total
+      mem_used="$(echo "$nv" | awk -F, '{gsub(/ /,"",$2); print int($2)}')"
+      mem_total="$(echo "$nv" | awk -F, '{gsub(/ /,"",$3); print int($3)}')"
+      if (( mem_total > 0 )); then
+        gpu_mem_pct=$(( (mem_used * 100) / mem_total ))
+      fi
+      gpu_temp_c="$(echo "$nv" | awk -F, '{gsub(/ /,"",$4); print int($4) "C"}')"
+      gpu_power_w="$(echo "$nv" | awk -F, '{gsub(/ /,"",$5); printf "%.1fW", $5}')"
+      gpu_clock_mhz="$(echo "$nv" | awk -F, '{gsub(/ /,"",$6); print int($6) "MHz"}')"
+    fi
+  elif command -v rocm-smi >/dev/null 2>&1; then
+    local util
+    util="$(rocm-smi --showuse 2>/dev/null | awk -F': ' '/GPU use/ {gsub(/%/, "", $2); print int($2); exit}' || true)"
+    [[ -n "$util" ]] && gpu_usage_pct="$util"
+    gpu_mem_pct=0
+    gpu_temp_c="$(rocm-smi --showtemp 2>/dev/null | awk -F': ' '/Temperature/ {print $2; exit}' || echo n/a)"
+    gpu_power_w="$(rocm-smi --showpower 2>/dev/null | awk -F': ' '/Average Graphics Package Power/ {print $2; exit}' || echo n/a)"
+    gpu_clock_mhz="$(rocm-smi --showclk 2>/dev/null | awk -F': ' '/sclk clock level/ {print $2; exit}' || echo n/a)"
+  else
+    gpu_usage_pct=0
+    gpu_mem_pct=0
+    gpu_temp_c="n/a"
+    gpu_power_w="n/a"
+    gpu_clock_mhz="n/a"
+  fi
+
+  iface="${DOTFILES_DEFAULT_IFACE:-}"
+  [[ -z "$iface" || "$iface" == "unknown" ]] && iface="$(ip route 2>/dev/null | awk '/default/ {print $5; exit}' || true)"
+  if [[ -n "$iface" && -r "/sys/class/net/$iface/statistics/rx_bytes" && -r "/sys/class/net/$iface/statistics/tx_bytes" ]]; then
+    now_rx="$(cat "/sys/class/net/$iface/statistics/rx_bytes" 2>/dev/null || echo 0)"
+    now_tx="$(cat "/sys/class/net/$iface/statistics/tx_bytes" 2>/dev/null || echo 0)"
+    if (( net_prev_rx > 0 )) && (( now_rx >= net_prev_rx )); then
+      net_rx_rate_bps=$(( (now_rx - net_prev_rx) * 8 ))
+    else
+      net_rx_rate_bps=0
+    fi
+    if (( net_prev_tx > 0 )) && (( now_tx >= net_prev_tx )); then
+      net_tx_rate_bps=$(( (now_tx - net_prev_tx) * 8 ))
+    else
+      net_tx_rate_bps=0
+    fi
+    net_prev_rx="$now_rx"
+    net_prev_tx="$now_tx"
+  else
+    net_rx_rate_bps=0
+    net_tx_rate_bps=0
+  fi
+
+  net_bps=$((net_rx_rate_bps + net_tx_rate_bps))
+  # Normalize to 1Gbps scale for graphing.
+  if (( net_bps > 1000000000 )); then
+    hist_net="$(append_hist "$hist_net" 100 "$HIST_LEN")"
+  else
+    hist_net="$(append_hist "$hist_net" "$(( (net_bps * 100) / 1000000000 ))" "$HIST_LEN")"
+  fi
+  hist_cpu="$(append_hist "$hist_cpu" "$cpu_usage_pct" "$HIST_LEN")"
+  hist_mem="$(append_hist "$hist_mem" "$mem_usage_pct" "$HIST_LEN")"
+  hist_gpu="$(append_hist "$hist_gpu" "$gpu_usage_pct" "$HIST_LEN")"
+}
+
+prime_live_metrics() {
+  # Take two close samples so delta-based metrics (CPU/net) have real values.
+  sample_live_metrics
+  sleep 0.12
+  sample_live_metrics
+}
+
 gather_data() {
   session_type="${XDG_SESSION_TYPE:-unknown}"
   desktop="${XDG_CURRENT_DESKTOP:-unknown}"
@@ -263,6 +460,17 @@ render_body() {
     print_sep
     printf "%b%s%b\n" "$C3" "NPU guidance: load vendor driver/firmware, then run rice-autodetect" "$C0"
   fi
+
+  print_sep
+  printf "%b%s%b\n" "$C4" "LIVE TELEMETRY" "$C0"
+  print_kv "CPU load:" "$(printf "[%s] %3d%%  %s  %s" "$(percent_bar "$cpu_usage_pct")" "$cpu_usage_pct" "${cpu_freq_mhz}MHz" "$cpu_voltage_v")"
+  print_kv "Memory load:" "$(printf "[%s] %3d%%" "$(percent_bar "$mem_usage_pct")" "$mem_usage_pct")"
+  print_kv "GPU load:" "$(printf "[%s] %3d%%  VRAM:%3d%%  %s  %s  %s" "$(percent_bar "$gpu_usage_pct")" "$gpu_usage_pct" "$gpu_mem_pct" "$gpu_temp_c" "$gpu_power_w" "$gpu_clock_mhz")"
+  print_kv "Network:" "RX $(format_bps "$net_rx_rate_bps") | TX $(format_bps "$net_tx_rate_bps")"
+  print_kv "CPU graph:" "$(hist_graph "$hist_cpu")"
+  print_kv "MEM graph:" "$(hist_graph "$hist_mem")"
+  print_kv "GPU graph:" "$(hist_graph "$hist_gpu")"
+  print_kv "NET graph:" "$(hist_graph "$hist_net")"
 }
 
 render_gif_block() {
@@ -307,6 +515,7 @@ render_static() {
   local gif_path
   gif_path="$(resolve_gif_path)"
   gather_data
+  prime_live_metrics
   printf "%b%s%b\n" "$C1" "RICE-CHECK :: RICEFETCH" "$C0"
   if [[ "$ANIMATE" -eq 1 ]] && [[ -t 1 ]]; then
     printf "%b%s%b\n" "$C1" "RICE-CHECK GIF CORE" "$C0"
@@ -344,6 +553,7 @@ render_tui() {
   trap '[[ -n "$GIF_PID" ]] && kill "$GIF_PID" >/dev/null 2>&1 || true; kitten icat --clear --silent >/dev/null 2>&1 || true; tput rmcup 2>/dev/null || true; tput cnorm 2>/dev/null || true; printf "\n"' EXIT INT TERM
 
   gather_data
+  prime_live_metrics
   printf "\033[H\033[J"
   printf "%b%s%b\n" "$C1" "RICE-CHECK :: RICEFETCH" "$C0"
   printf "%b%s%b\n" "$C1" "RICE-CHECK GIF CORE  (q to quit) | left metrics / right gif" "$C0"
@@ -360,6 +570,7 @@ render_tui() {
     # refresh metrics every ~1s without re-sending the GIF
     if (( tick % 10 == 0 )); then
       gather_data
+      sample_live_metrics
       for ((row = body_row; row <= lines; row++)); do
         printf "\033[%d;1H%-*s" "$row" "$left_width" ""
       done
