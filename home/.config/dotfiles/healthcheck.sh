@@ -38,7 +38,7 @@ resolve_gif_path() {
 }
 
 if [[ "$PLAIN" -eq 1 ]]; then
-  C0=""; C1=""; C2=""; C3=""; C4=""; C5=""
+  C0=""; C1=""; C2=""; C3=""; C4=""; C5=""; C6=""; C7=""; C8=""
 else
   C0="\033[0m"
   C1="\033[1;38;5;39m"
@@ -46,6 +46,9 @@ else
   C3="\033[1;38;5;214m"
   C4="\033[1;38;5;120m"
   C5="\033[38;5;250m"
+  C6="\033[1;38;5;196m"
+  C7="\033[1;38;5;51m"
+  C8="\033[1;38;5;141m"
 fi
 
 LEFT_PANE_WIDTH=78
@@ -98,6 +101,27 @@ print_header() {
   printf "%b+%s+%b\n" "$C5" "$(printf '%*s' "$((LEFT_PANE_WIDTH - 2))" '' | tr ' ' '-')" "$C0"
   printf "%b|%b %b%-*s%b |\n" "$C5" "$C0" "$C1" "$((LEFT_PANE_WIDTH - 4))" "$inner" "$C0"
   printf "%b+%s+%b\n" "$C5" "$(printf '%*s' "$((LEFT_PANE_WIDTH - 2))" '' | tr ' ' '-')" "$C0"
+}
+
+usage_color() {
+  local pct="$1"
+  if (( pct >= 85 )); then
+    printf "%s" "$C6"
+  elif (( pct >= 65 )); then
+    printf "%s" "$C3"
+  elif (( pct >= 35 )); then
+    printf "%s" "$C4"
+  else
+    printf "%s" "$C7"
+  fi
+}
+
+color_bar() {
+  local pct="$1"
+  local width="${2:-14}"
+  local c
+  c="$(usage_color "$pct")"
+  printf "%b%s%b" "$c" "$(percent_bar "$pct" "$width" "$BAR_FILL" "$BAR_EMPTY")" "$C0"
 }
 
 # shared state populated by gather_data
@@ -634,21 +658,23 @@ draw_box() {
   local w="$3"
   local h="$4"
   local title="$5"
+  local title_color="${6:-$C1}"
+  local border_color="${7:-$C5}"
   local i
   local inner_w=$((w - 2))
   [[ "$w" -lt 6 || "$h" -lt 3 ]] && return
 
-  printf "\033[%d;%dH+" "$y" "$x"
+  printf "\033[%d;%dH%b+" "$y" "$x" "$border_color"
   printf "%s" "$(printf '%*s' "$inner_w" '' | tr ' ' '-')"
-  printf "+"
+  printf "+%b" "$C0"
   for ((i = 1; i < h - 1; i++)); do
-    printf "\033[%d;%dH|%*s|" "$((y + i))" "$x" "$inner_w" ""
+    printf "\033[%d;%dH%b|%b%*s%b|%b" "$((y + i))" "$x" "$border_color" "$C0" "$inner_w" "" "$border_color" "$C0"
   done
-  printf "\033[%d;%dH+" "$((y + h - 1))" "$x"
+  printf "\033[%d;%dH%b+" "$((y + h - 1))" "$x" "$border_color"
   printf "%s" "$(printf '%*s' "$inner_w" '' | tr ' ' '-')"
-  printf "+"
+  printf "+%b" "$C0"
   if [[ -n "$title" ]]; then
-    printf "\033[%d;%dH%b%s%b" "$y" "$((x + 2))" "$C1" "$(fit_text "$title" "$((w - 6))")" "$C0"
+    printf "\033[%d;%dH%b%s%b" "$y" "$((x + 2))" "$title_color" "$(fit_text "$title" "$((w - 6))")" "$C0"
   fi
 }
 
@@ -657,7 +683,12 @@ box_line() {
   local y="$2"
   local w="$3"
   local line="$4"
-  printf "\033[%d;%dH%s" "$y" "$x" "$(pad_fit "$line" "$w")"
+  local color="${5:-}"
+  if [[ -n "$color" ]]; then
+    printf "\033[%d;%dH%b%s%b" "$y" "$x" "$color" "$(pad_fit "$line" "$w")" "$C0"
+  else
+    printf "\033[%d;%dH%s" "$y" "$x" "$(pad_fit "$line" "$w")"
+  fi
 }
 
 render_tui_dashboard() {
@@ -668,6 +699,7 @@ render_tui_dashboard() {
   local graph_cpu graph_mem graph_gpu graph_net
   local cpu_line mem_line_live gpu_line net_line
   local chart_w process_row
+  local cpu_c mem_c gpu_c net_c
 
   cols="$(tput cols 2>/dev/null || echo 120)"
   lines="$(tput lines 2>/dev/null || echo 40)"
@@ -694,17 +726,21 @@ render_tui_dashboard() {
   graph_gpu="$(hist_graph "$hist_gpu" "$chart_w" "$GRAPH_MODE")"
   graph_net="$(hist_graph "$hist_net" "$chart_w" "$GRAPH_MODE")"
 
-  cpu_line="$(printf "[%s] %3d%%  %s  %s" "$(percent_bar "$cpu_usage_pct" 14 "$BAR_FILL" "$BAR_EMPTY")" "$cpu_usage_pct" "${cpu_freq_mhz}MHz" "$cpu_voltage_v")"
-  mem_line_live="$(printf "[%s] %3d%%" "$(percent_bar "$mem_usage_pct" 14 "$BAR_FILL" "$BAR_EMPTY")" "$mem_usage_pct")"
-  gpu_line="$(printf "[%s] %3d%% VRAM:%3d%% %s %s %s" "$(percent_bar "$gpu_usage_pct" 14 "$BAR_FILL" "$BAR_EMPTY")" "$gpu_usage_pct" "$gpu_mem_pct" "$gpu_temp_c" "$gpu_power_w" "$gpu_clock_mhz")"
+  cpu_c="$(usage_color "$cpu_usage_pct")"
+  mem_c="$(usage_color "$mem_usage_pct")"
+  gpu_c="$(usage_color "$gpu_usage_pct")"
+  net_c="$C8"
+  cpu_line="$(printf "[%s] %3d%%  %s  %s" "$(color_bar "$cpu_usage_pct" 14)" "$cpu_usage_pct" "${cpu_freq_mhz}MHz" "$cpu_voltage_v")"
+  mem_line_live="$(printf "[%s] %3d%%" "$(color_bar "$mem_usage_pct" 14)" "$mem_usage_pct")"
+  gpu_line="$(printf "[%s] %3d%% VRAM:%3d%% %s %s %s" "$(color_bar "$gpu_usage_pct" 14)" "$gpu_usage_pct" "$gpu_mem_pct" "$gpu_temp_c" "$gpu_power_w" "$gpu_clock_mhz")"
   net_line="RX $(format_bps "$net_rx_rate_bps") | TX $(format_bps "$net_tx_rate_bps")"
 
   if (( DASH_INIT == 0 )); then
     printf "\033[H\033[2J"
-    draw_box "$left_x" "$top_y" "$left_w" "$panel_h1" "RICEFETCH CORE"
-    draw_box "$left_x" "$((top_y + panel_h1))" "$left_w" "$panel_h2" "SESSION / HARDWARE"
-    draw_box "$left_x" "$((top_y + panel_h1 + panel_h2))" "$left_w" "$panel_h3" "LIVE TELEMETRY"
-    draw_box "$right_x" "$top_y" "$right_w" "$lines" "RICE-CHECK :: DASHBOARD  (q to quit)"
+    draw_box "$left_x" "$top_y" "$left_w" "$panel_h1" "RICEFETCH CORE" "$C4" "$C7"
+    draw_box "$left_x" "$((top_y + panel_h1))" "$left_w" "$panel_h2" "SESSION / HARDWARE" "$C2" "$C2"
+    draw_box "$left_x" "$((top_y + panel_h1 + panel_h2))" "$left_w" "$panel_h3" "LIVE TELEMETRY" "$C3" "$C8"
+    draw_box "$right_x" "$top_y" "$right_w" "$lines" "RICE-CHECK :: DASHBOARD  (q to quit)" "$C1" "$C1"
     DASH_INIT=1
   fi
 
@@ -733,21 +769,21 @@ render_tui_dashboard() {
   box_line "$((left_x + 2))" "$((top_y + panel_h1 + panel_h2 + 1))" "$((left_w - 4))" "CPU  $cpu_line"
   box_line "$((left_x + 2))" "$((top_y + panel_h1 + panel_h2 + 2))" "$((left_w - 4))" "MEM  $mem_line_live"
   box_line "$((left_x + 2))" "$((top_y + panel_h1 + panel_h2 + 3))" "$((left_w - 4))" "GPU  $gpu_line"
-  box_line "$((left_x + 2))" "$((top_y + panel_h1 + panel_h2 + 4))" "$((left_w - 4))" "NET  $net_line"
-  box_line "$((left_x + 2))" "$((top_y + panel_h1 + panel_h2 + 6))" "$((left_w - 4))" "CPU graph: $graph_cpu"
-  box_line "$((left_x + 2))" "$((top_y + panel_h1 + panel_h2 + 7))" "$((left_w - 4))" "MEM graph: $graph_mem"
-  box_line "$((left_x + 2))" "$((top_y + panel_h1 + panel_h2 + 8))" "$((left_w - 4))" "GPU graph: $graph_gpu"
-  box_line "$((left_x + 2))" "$((top_y + panel_h1 + panel_h2 + 9))" "$((left_w - 4))" "NET graph: $graph_net"
+  box_line "$((left_x + 2))" "$((top_y + panel_h1 + panel_h2 + 4))" "$((left_w - 4))" "NET  $net_line" "$net_c"
+  box_line "$((left_x + 2))" "$((top_y + panel_h1 + panel_h2 + 6))" "$((left_w - 4))" "CPU graph: $graph_cpu" "$cpu_c"
+  box_line "$((left_x + 2))" "$((top_y + panel_h1 + panel_h2 + 7))" "$((left_w - 4))" "MEM graph: $graph_mem" "$mem_c"
+  box_line "$((left_x + 2))" "$((top_y + panel_h1 + panel_h2 + 8))" "$((left_w - 4))" "GPU graph: $graph_gpu" "$gpu_c"
+  box_line "$((left_x + 2))" "$((top_y + panel_h1 + panel_h2 + 9))" "$((left_w - 4))" "NET graph: $graph_net" "$net_c"
 
-  box_line "$((right_x + 2))" "$((top_y + 2))" "$((right_w - 4))" "CPU  ${cpu_usage_pct}%  ${cpu_freq_mhz}MHz  ${cpu_voltage_v}"
-  box_line "$((right_x + 2))" "$((top_y + 3))" "$((right_w - 4))" "$graph_cpu"
-  box_line "$((right_x + 2))" "$((top_y + 5))" "$((right_w - 4))" "MEM  ${mem_usage_pct}%"
-  box_line "$((right_x + 2))" "$((top_y + 6))" "$((right_w - 4))" "$graph_mem"
-  box_line "$((right_x + 2))" "$((top_y + 8))" "$((right_w - 4))" "GPU  ${gpu_usage_pct}%  VRAM ${gpu_mem_pct}%  ${gpu_temp_c}  ${gpu_power_w}"
-  box_line "$((right_x + 2))" "$((top_y + 9))" "$((right_w - 4))" "$graph_gpu"
-  box_line "$((right_x + 2))" "$((top_y + 11))" "$((right_w - 4))" "NET  $net_line"
-  box_line "$((right_x + 2))" "$((top_y + 12))" "$((right_w - 4))" "$graph_net"
-  box_line "$((right_x + 2))" "$((top_y + 14))" "$((right_w - 4))" "TOP PROCESSES (CPU)"
+  box_line "$((right_x + 2))" "$((top_y + 2))" "$((right_w - 4))" "CPU  ${cpu_usage_pct}%  ${cpu_freq_mhz}MHz  ${cpu_voltage_v}" "$cpu_c"
+  box_line "$((right_x + 2))" "$((top_y + 3))" "$((right_w - 4))" "$graph_cpu" "$cpu_c"
+  box_line "$((right_x + 2))" "$((top_y + 5))" "$((right_w - 4))" "MEM  ${mem_usage_pct}%" "$mem_c"
+  box_line "$((right_x + 2))" "$((top_y + 6))" "$((right_w - 4))" "$graph_mem" "$mem_c"
+  box_line "$((right_x + 2))" "$((top_y + 8))" "$((right_w - 4))" "GPU  ${gpu_usage_pct}%  VRAM ${gpu_mem_pct}%  ${gpu_temp_c}  ${gpu_power_w}" "$gpu_c"
+  box_line "$((right_x + 2))" "$((top_y + 9))" "$((right_w - 4))" "$graph_gpu" "$gpu_c"
+  box_line "$((right_x + 2))" "$((top_y + 11))" "$((right_w - 4))" "NET  $net_line" "$net_c"
+  box_line "$((right_x + 2))" "$((top_y + 12))" "$((right_w - 4))" "$graph_net" "$net_c"
+  box_line "$((right_x + 2))" "$((top_y + 14))" "$((right_w - 4))" "TOP PROCESSES (CPU)" "$C3"
   box_line "$((right_x + 2))" "$((top_y + 15))" "$((right_w - 4))" "  PID   CPU   MEM   CMD"
   process_row=$((top_y + 16))
   while IFS= read -r pline; do
