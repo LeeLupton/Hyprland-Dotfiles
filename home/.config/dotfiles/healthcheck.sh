@@ -48,14 +48,47 @@ else
   C5="\033[38;5;250m"
 fi
 
+LEFT_PANE_WIDTH=78
+
+fit_text() {
+  local text="$1"
+  local width="$2"
+  if (( width <= 0 )); then
+    echo ""
+    return
+  fi
+  if (( ${#text} > width )); then
+    if (( width <= 3 )); then
+      printf "%s" "${text:0:width}"
+    else
+      printf "%s..." "${text:0:$((width - 3))}"
+    fi
+  else
+    printf "%s" "$text"
+  fi
+}
+
 print_kv() {
   local k="$1"
   local v="$2"
-  printf "%b%-24s%b %s\n" "$C2" "$k" "$C0" "$v"
+  local keyw=20
+  local valuew=$((LEFT_PANE_WIDTH - keyw - 2))
+  (( valuew < 8 )) && valuew=8
+  v="$(fit_text "$v" "$valuew")"
+  printf "%b%-*s%b %s\n" "$C2" "$keyw" "$k" "$C0" "$v"
 }
 
 print_sep() {
-  printf "%b%s%b\n" "$C5" "------------------------------------------------------------" "$C0"
+  printf "%b%s%b\n" "$C5" "$(printf '%*s' "$LEFT_PANE_WIDTH" '' | tr ' ' '=')" "$C0"
+}
+
+print_header() {
+  local title="$1"
+  local inner
+  inner="$(fit_text "$title" "$((LEFT_PANE_WIDTH - 4))")"
+  printf "%b+%s+%b\n" "$C5" "$(printf '%*s' "$((LEFT_PANE_WIDTH - 2))" '' | tr ' ' '-')" "$C0"
+  printf "%b|%b %b%-*s%b |\n" "$C5" "$C0" "$C1" "$((LEFT_PANE_WIDTH - 4))" "$inner" "$C0"
+  printf "%b+%s+%b\n" "$C5" "$(printf '%*s' "$((LEFT_PANE_WIDTH - 2))" '' | tr ' ' '-')" "$C0"
 }
 
 # shared state populated by gather_data
@@ -514,9 +547,10 @@ render_gif_block() {
 render_static() {
   local gif_path
   gif_path="$(resolve_gif_path)"
+  LEFT_PANE_WIDTH=78
   gather_data
   prime_live_metrics
-  printf "%b%s%b\n" "$C1" "RICE-CHECK :: RICEFETCH" "$C0"
+  print_header "RICE-CHECK :: RICEFETCH"
   if [[ "$ANIMATE" -eq 1 ]] && [[ -t 1 ]]; then
     printf "%b%s%b\n" "$C1" "RICE-CHECK GIF CORE" "$C0"
     render_gif_block "$gif_path"
@@ -534,10 +568,10 @@ render_tui() {
   cols="$(tput cols 2>/dev/null || echo 120)"
   lines="$(tput lines 2>/dev/null || echo 40)"
 
-  left_width=62
-  if (( cols < 110 )); then
-    left_width=56
-  fi
+  left_width=$(( cols * 45 / 100 ))
+  (( left_width < 62 )) && left_width=62
+  (( left_width > 100 )) && left_width=100
+  LEFT_PANE_WIDTH="$left_width"
   gif_left=$(( left_width + 2 ))
   gif_top=2
   gif_w=$(( cols - gif_left - 1 ))
@@ -555,9 +589,9 @@ render_tui() {
   gather_data
   prime_live_metrics
   printf "\033[H\033[J"
-  printf "%b%s%b\n" "$C1" "RICE-CHECK :: RICEFETCH" "$C0"
-  printf "%b%s%b\n" "$C1" "RICE-CHECK GIF CORE  (q to quit) | left metrics / right gif" "$C0"
-  printf "%b%s%b\n" "$C2" "$(printf '%*s' "$left_width" '' | tr ' ' '-')" "$C0"
+  print_header "RICE-CHECK :: RICEFETCH"
+  printf "%b%s%b\n" "$C1" "$(fit_text "RICE-CHECK GIF CORE  (q to quit) | left metrics / right gif" "$left_width")" "$C0"
+  print_sep
   if [[ "$ANIMATE" -eq 1 ]] && [[ -n "$gif_place" ]]; then
     render_gif_block "$gif_path" "tui" "$gif_place"
   elif [[ "$ANIMATE" -eq 1 ]]; then
