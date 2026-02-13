@@ -102,5 +102,8 @@ alias rip-url='grep -Eo "https?://[a-zA-Z0-9./?=_-]+"'
 alias rip-email='grep -Eo "[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}"'
 alias fix-docker='sudo docker stop $(sudo docker ps -q) 2>/dev/null' # Nuke all running containers
 export PATH="$HOME/.npm-global/bin:$PATH"
-export PATH="/home/lee/.npm-global/bin:$PATH"
+export PATH="$HOME/.npm-global/bin:$PATH"
+
+# dot-files session helpers
+[ -f "$HOME/.config/dotfiles/session_tools.sh" ] && source "$HOME/.config/dotfiles/session_tools.sh"
 	

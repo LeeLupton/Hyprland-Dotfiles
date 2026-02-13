@@ -4,48 +4,112 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 SRC="$ROOT_DIR/home"
 BACKUP_DIR="$HOME/.dotfiles-backup/$(date +%Y%m%d-%H%M%S)"
+DRY_RUN=0
+FAIL_COUNT=0
 
-mkdir -p "$BACKUP_DIR"
+log() { printf '[apply] %s\n' "$*"; }
+warn() { printf '[apply][warn] %s\n' "$*" >&2; }
+die() { printf '[apply][error] %s\n' "$*" >&2; exit 1; }
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --dry-run) DRY_RUN=1 ;;
+    *) die "Unknown option: $1" ;;
+  esac
+  shift
+done
+
+run_cmd() {
+  if [[ "$DRY_RUN" -eq 1 ]]; then
+    log "DRY-RUN: $*"
+    return 0
+  fi
+  "$@"
+}
+
+[[ -d "$SRC" ]] || die "Missing source tree: $SRC"
+command -v find >/dev/null 2>&1 || die "find is required"
+command -v tar >/dev/null 2>&1 || die "tar is required"
+
+run_cmd mkdir -p "$BACKUP_DIR"
 
 backup_path() {
   local p="$1"
   if [[ -e "$HOME/$p" || -L "$HOME/$p" ]]; then
-    mkdir -p "$BACKUP_DIR/$(dirname "$p")"
-    cp -a "$HOME/$p" "$BACKUP_DIR/$p"
+    if [[ "$p" == ".local" ]]; then
+      # Avoid backing up all of ~/.local (can include permission-locked app data).
+      if [[ -e "$HOME/.local/share/rofi" ]]; then
+        run_cmd mkdir -p "$BACKUP_DIR/.local/share"
+        run_cmd cp -a "$HOME/.local/share/rofi" "$BACKUP_DIR/.local/share/rofi"
+      fi
+      return 0
+    fi
+    if [[ "$p" == "waybar-scripts" && -d "$HOME/waybar-scripts" ]]; then
+      run_cmd mkdir -p "$BACKUP_DIR/waybar-scripts"
+      if [[ "$DRY_RUN" -eq 1 ]]; then
+        log "DRY-RUN: backup waybar-scripts with target exclusions"
+      else
+        tar -C "$HOME/waybar-scripts" \
+          --exclude='traffic_rs/target' \
+          --exclude='traffic_rs/target/*' \
+          -cf - . | tar -C "$BACKUP_DIR/waybar-scripts" -xf -
+      fi
+      return 0
+    fi
+    run_cmd mkdir -p "$BACKUP_DIR/$(dirname "$p")"
+    run_cmd cp -a "$HOME/$p" "$BACKUP_DIR/$p"
   fi
 }
 
 apply_path() {
   local p="$1"
   if [[ -d "$SRC/$p" ]]; then
-    mkdir -p "$HOME/$p"
+    run_cmd mkdir -p "$HOME/$p"
     # Merge directory contents without creating nested duplicate paths.
-    tar -C "$SRC/$p" -cf - . | tar -C "$HOME/$p" -xf -
+    if [[ "$DRY_RUN" -eq 1 ]]; then
+      log "DRY-RUN: tar -C $SRC/$p -cf - . | tar -C $HOME/$p -xf -"
+    else
+      tar -C "$SRC/$p" -cf - . | tar -C "$HOME/$p" -xf -
+    fi
   else
-    mkdir -p "$HOME/$(dirname "$p")"
-    cp -a "$SRC/$p" "$HOME/$p"
+    run_cmd mkdir -p "$HOME/$(dirname "$p")"
+    run_cmd cp -a "$SRC/$p" "$HOME/$p"
   fi
 }
 
 while IFS= read -r -d '' file; do
   rel="${file#$SRC/}"
-  backup_path "$rel"
-  apply_path "$rel"
+  if ! backup_path "$rel"; then
+    warn "Backup failed for $rel"
+    FAIL_COUNT=$((FAIL_COUNT + 1))
+    continue
+  fi
+  if ! apply_path "$rel"; then
+    warn "Apply failed for $rel"
+    FAIL_COUNT=$((FAIL_COUNT + 1))
+  fi
 done < <(find "$SRC" -mindepth 1 -maxdepth 1 -print0)
 
 # user services (best-effort)
 if [[ -d "$HOME/.config/systemd/user" ]]; then
-  systemctl --user daemon-reload || true
+  run_cmd systemctl --user daemon-reload || true
   for svc in tether-monitor.service voice-interrupt-daemon.service crypto-tui.service voice-handsfree-daemon.service; do
     if [[ -f "$HOME/.config/systemd/user/$svc" ]]; then
-      systemctl --user enable --now "$svc" || true
+      run_cmd systemctl --user enable --now "$svc" || true
     fi
   done
 fi
 
 # Ensure executables
-find "$HOME/.config/hypr/scripts" -type f -name '*.sh' -exec chmod +x {} + 2>/dev/null || true
-find "$HOME/waybar-scripts" -type f -name '*.sh' -exec chmod +x {} + 2>/dev/null || true
-find "$HOME/waybar-scripts" -type f -name '*.py' -exec chmod +x {} + 2>/dev/null || true
+if [[ "$DRY_RUN" -eq 0 ]]; then
+  find "$HOME/.config/hypr/scripts" -type f -name '*.sh' -exec chmod +x {} + 2>/dev/null || true
+  find "$HOME/waybar-scripts" -type f -name '*.sh' -exec chmod +x {} + 2>/dev/null || true
+  find "$HOME/waybar-scripts" -type f -name '*.py' -exec chmod +x {} + 2>/dev/null || true
+  find "$HOME/.config/dotfiles" -type f -name '*.sh' -exec chmod +x {} + 2>/dev/null || true
+fi
 
-echo "Dotfiles applied. Backups: $BACKUP_DIR"
+if [[ "$FAIL_COUNT" -gt 0 ]]; then
+  warn "Dotfiles applied with $FAIL_COUNT item failures. Backup: $BACKUP_DIR"
+else
+  log "Dotfiles applied successfully. Backup: $BACKUP_DIR"
+fi
