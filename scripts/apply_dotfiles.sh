@@ -27,6 +27,14 @@ run_cmd() {
   "$@"
 }
 
+sync_file_strict() {
+  local src="$1"
+  local dst="$2"
+  run_cmd mkdir -p "$(dirname "$dst")"
+  # --remove-destination avoids edge cases where inplace overwrite can silently fail.
+  run_cmd cp -af --remove-destination "$src" "$dst"
+}
+
 [[ -d "$SRC" ]] || die "Missing source tree: $SRC"
 command -v find >/dev/null 2>&1 || die "find is required"
 command -v tar >/dev/null 2>&1 || die "tar is required"
@@ -67,14 +75,36 @@ apply_path() {
     run_cmd mkdir -p "$HOME/$p"
     # Merge directory contents without creating nested duplicate paths.
     if [[ "$DRY_RUN" -eq 1 ]]; then
-      log "DRY-RUN: tar -C $SRC/$p -cf - . | tar -C $HOME/$p -xf -"
+      log "DRY-RUN: tar -C $SRC/$p -cf - . | tar --overwrite -C $HOME/$p -xf -"
     else
-      tar -C "$SRC/$p" -cf - . | tar -C "$HOME/$p" -xf -
+      tar -C "$SRC/$p" -cf - . | tar --overwrite -C "$HOME/$p" -xf -
     fi
   else
     run_cmd mkdir -p "$HOME/$(dirname "$p")"
-    run_cmd cp -a "$SRC/$p" "$HOME/$p"
+    sync_file_strict "$SRC/$p" "$HOME/$p"
   fi
+}
+
+enforce_active_waybar_targets() {
+  local config_link="$HOME/.config/waybar/config"
+  local style_link="$HOME/.config/waybar/style.css"
+  local target rel src_file
+
+  for link in "$config_link" "$style_link"; do
+    [[ -L "$link" ]] || continue
+    target="$(readlink -f "$link" 2>/dev/null || true)"
+    [[ -n "$target" ]] || continue
+    [[ "$target" == "$HOME/.config/waybar/"* ]] || continue
+    rel="${target#$HOME/}"
+    src_file="$SRC/${rel#.config/}"
+    if [[ -f "$src_file" ]]; then
+      if [[ "$DRY_RUN" -eq 1 ]]; then
+        log "DRY-RUN: enforce active waybar target $rel from repo copy"
+      else
+        sync_file_strict "$src_file" "$target"
+      fi
+    fi
+  done
 }
 
 while IFS= read -r -d '' file; do
@@ -89,6 +119,8 @@ while IFS= read -r -d '' file; do
     FAIL_COUNT=$((FAIL_COUNT + 1))
   fi
 done < <(find "$SRC" -mindepth 1 -maxdepth 1 -print0)
+
+enforce_active_waybar_targets
 
 # user services (best-effort)
 if [[ -d "$HOME/.config/systemd/user" ]]; then
