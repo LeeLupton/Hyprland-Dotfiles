@@ -9,6 +9,15 @@ rice-check() {
   fi
 }
 
+rice-check-npu() {
+  if [[ -x "$HOME/.config/dotfiles/healthcheck.sh" ]]; then
+    bash "$HOME/.config/dotfiles/healthcheck.sh" | rg -i 'NPU|accel|intel_vpu|amdxdna|qaic|hailo' || true
+  else
+    echo "healthcheck script missing: ~/.config/dotfiles/healthcheck.sh"
+    return 1
+  fi
+}
+
 rice-restart() {
   local target="${1:-stack}"
   case "$target" in

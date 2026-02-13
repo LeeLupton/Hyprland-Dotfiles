@@ -35,6 +35,11 @@ fi
 print_status "Display manager:" "${DOTFILES_DISPLAY_MANAGER:-unknown}"
 print_status "Lock manager:" "${DOTFILES_LOCK_MANAGER:-unknown}"
 print_status "Preferred GPU:" "${DOTFILES_GPU_VENDOR:-unknown}"
+print_status "NPU vendor:" "${DOTFILES_NPU_VENDOR:-unknown}"
+print_status "NPU driver:" "${DOTFILES_NPU_DRIVER:-unknown}"
+print_status "NPU device:" "${DOTFILES_NPU_DEVICE:-unknown}"
+print_status "NPU runtime tools:" "${DOTFILES_NPU_RUNTIME:-unknown}"
+print_status "NPU ready:" "${DOTFILES_NPU_READY:-unknown}"
 print_status "Default iface:" "${DOTFILES_DEFAULT_IFACE:-unknown}"
 print_status "Voice source:" "${DOTFILES_VOICE_SOURCE:-unknown}"
 
@@ -77,4 +82,35 @@ if command -v rocm-smi >/dev/null 2>&1; then
 elif command -v amd-smi >/dev/null 2>&1; then
   amd_line="$(amd-smi list --gpu 2>/dev/null | head -n1 || true)"
   print_status "AMD-SMI:" "${amd_line:-available (no data)}"
+fi
+
+if command -v lspci >/dev/null 2>&1; then
+  npu_lines="$(lspci -nn 2>/dev/null | grep -Ei 'neural|npu|vpu|gaussian.*neural|processing accelerators|xdna' || true)"
+  if [[ -n "${npu_lines:-}" ]]; then
+    print_status "NPU PCI:" "$(echo "$npu_lines" | head -n1)"
+    extra_npu="$(echo "$npu_lines" | tail -n +2 || true)"
+    if [[ -n "${extra_npu:-}" ]]; then
+      while IFS= read -r n; do
+        [[ -n "$n" ]] && print_status "" "$n"
+      done <<<"$extra_npu"
+    fi
+  fi
+fi
+
+if command -v lsmod >/dev/null 2>&1; then
+  npu_mods="$(lsmod | awk '/^intel_vpu|^amdxdna|^qaic|^hailo_pci/ {printf "%s ", $1}')"
+  if [[ -n "${npu_mods:-}" ]]; then
+    print_status "NPU modules loaded:" "$npu_mods"
+  else
+    print_status "NPU modules loaded:" "none"
+  fi
+fi
+
+if [[ -d /dev/accel ]]; then
+  accel_nodes="$(ls -1 /dev/accel 2>/dev/null | tr '\n' ' ' || true)"
+  print_status "/dev/accel nodes:" "${accel_nodes:-none}"
+fi
+
+if [[ "${DOTFILES_NPU_READY:-no}" != "yes" ]]; then
+  print_status "NPU guidance:" "run rice-autodetect after loading vendor drivers/firmware"
 fi

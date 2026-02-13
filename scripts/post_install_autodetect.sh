@@ -106,6 +106,84 @@ detect_gpu_vendor() {
   echo "unknown"
 }
 
+detect_npu_vendor() {
+  local accel_line=""
+  if command -v lspci >/dev/null 2>&1; then
+    accel_line="$(lspci -nn 2>/dev/null | grep -Ei 'neural|npu|vpu|gaussian.*neural|processing accelerators|xdna' | head -n1 || true)"
+  fi
+
+  if [[ -n "$accel_line" ]]; then
+    if echo "$accel_line" | grep -Eqi 'intel'; then
+      echo "intel"
+      return
+    fi
+    if echo "$accel_line" | grep -Eqi 'amd|advanced micro devices'; then
+      echo "amd"
+      return
+    fi
+    if echo "$accel_line" | grep -Eqi 'qualcomm|qcom'; then
+      echo "qualcomm"
+      return
+    fi
+    echo "generic"
+    return
+  fi
+  echo "none"
+}
+
+detect_npu_driver() {
+  if lsmod 2>/dev/null | awk '{print $1}' | grep -qx 'intel_vpu'; then
+    echo "intel_vpu"
+    return
+  fi
+  if lsmod 2>/dev/null | awk '{print $1}' | grep -qx 'amdxdna'; then
+    echo "amdxdna"
+    return
+  fi
+  if lsmod 2>/dev/null | awk '{print $1}' | grep -Eqx 'qaic|hailo_pci'; then
+    lsmod 2>/dev/null | awk '{print $1}' | grep -E 'qaic|hailo_pci' | head -n1
+    return
+  fi
+  echo "none"
+}
+
+detect_npu_device() {
+  if [[ -e /dev/accel/accel0 ]]; then
+    echo "/dev/accel/accel0"
+    return
+  fi
+  if [[ -d /dev/accel ]]; then
+    local accel_dev
+    accel_dev="$(ls -1 /dev/accel 2>/dev/null | head -n1 || true)"
+    if [[ -n "$accel_dev" ]]; then
+      echo "/dev/accel/$accel_dev"
+      return
+    fi
+  fi
+  echo "none"
+}
+
+detect_npu_runtime() {
+  if command -v benchmark_app >/dev/null 2>&1 || command -v mo >/dev/null 2>&1; then
+    echo "openvino-tools"
+    return
+  fi
+  if command -v onnxruntime_perf_test >/dev/null 2>&1; then
+    echo "onnxruntime-tools"
+    return
+  fi
+  echo "none"
+}
+
+calc_npu_ready() {
+  local vendor="$1" driver="$2" device="$3"
+  if [[ "$vendor" != "none" && "$driver" != "none" && "$device" != "none" ]]; then
+    echo "yes"
+  else
+    echo "no"
+  fi
+}
+
 find_dri_card_for_pci_bdf() {
   local bdf="$1"
   local bypath="/dev/dri/by-path/pci-${bdf}-card"
@@ -270,11 +348,17 @@ patch_voice_source() {
 
 main() {
   local iface source_name dm lock_mgr gpu_vendor
+  local npu_vendor npu_driver npu_device npu_runtime npu_ready
   iface="$(detect_default_iface)"
   source_name="$(detect_default_source)"
   dm="$(detect_display_manager)"
   lock_mgr="$(detect_lock_manager)"
   gpu_vendor="$(detect_gpu_vendor)"
+  npu_vendor="$(detect_npu_vendor)"
+  npu_driver="$(detect_npu_driver)"
+  npu_device="$(detect_npu_device)"
+  npu_runtime="$(detect_npu_runtime)"
+  npu_ready="$(calc_npu_ready "$npu_vendor" "$npu_driver" "$npu_device")"
 
   run_cmd mkdir -p "$HOME/.config/dotfiles"
   if [[ "$DRY_RUN" -eq 1 ]]; then
@@ -286,6 +370,11 @@ DOTFILES_VOICE_SOURCE=$source_name
 DOTFILES_DISPLAY_MANAGER=$dm
 DOTFILES_LOCK_MANAGER=$lock_mgr
 DOTFILES_GPU_VENDOR=$gpu_vendor
+DOTFILES_NPU_VENDOR=$npu_vendor
+DOTFILES_NPU_DRIVER=$npu_driver
+DOTFILES_NPU_DEVICE=$npu_device
+DOTFILES_NPU_RUNTIME=$npu_runtime
+DOTFILES_NPU_READY=$npu_ready
 DOTFILES_LAST_DETECT=$(date -Iseconds)
 EOF
   fi
@@ -303,6 +392,11 @@ EOF
   log "Detected display manager: $dm"
   log "Detected lock manager: $lock_mgr"
   log "Detected GPU vendor: $gpu_vendor"
+  log "Detected NPU vendor: $npu_vendor"
+  log "Detected NPU driver: $npu_driver"
+  log "Detected NPU device: $npu_device"
+  log "Detected NPU runtime tools: $npu_runtime"
+  log "NPU ready: $npu_ready"
 }
 
 main "$@"
