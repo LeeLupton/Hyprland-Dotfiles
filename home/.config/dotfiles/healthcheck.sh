@@ -820,18 +820,10 @@ render_tui_dashboard() {
   box_line "$((left_x + 2))" "$((top_y + panel_h1 + panel_h2 + 8))" "$((left_w - 4))" "GPU graph: $graph_gpu" "$gpu_c"
   box_line "$((left_x + 2))" "$((top_y + panel_h1 + panel_h2 + 9))" "$((left_w - 4))" "NET graph: $graph_net" "$net_c"
 
-  box_line "$((right_x + 2))" "$((gif_y + gif_h + 1))" "$((right_w - 4))" "CPU  ${cpu_usage_pct}%  ${cpu_freq_mhz}MHz  ${cpu_voltage_v}" "$cpu_c"
-  box_line "$((right_x + 2))" "$((gif_y + gif_h + 2))" "$((right_w - 4))" "$graph_cpu" "$cpu_c"
-  box_line "$((right_x + 2))" "$((gif_y + gif_h + 4))" "$((right_w - 4))" "MEM  ${mem_usage_pct}%" "$mem_c"
-  box_line "$((right_x + 2))" "$((gif_y + gif_h + 5))" "$((right_w - 4))" "$graph_mem" "$mem_c"
-  box_line "$((right_x + 2))" "$((gif_y + gif_h + 7))" "$((right_w - 4))" "GPU  ${gpu_usage_pct}%  VRAM ${gpu_mem_pct}%  ${gpu_temp_c}  ${gpu_power_w}" "$gpu_c"
-  box_line "$((right_x + 2))" "$((gif_y + gif_h + 8))" "$((right_w - 4))" "$graph_gpu" "$gpu_c"
-  box_line "$((right_x + 2))" "$((gif_y + gif_h + 10))" "$((right_w - 4))" "NET  $net_line" "$net_c"
-  box_line "$((right_x + 2))" "$((gif_y + gif_h + 11))" "$((right_w - 4))" "$graph_net" "$net_c"
-  box_line "$((right_x + 2))" "$((gif_y + gif_h + 13))" "$((right_w - 4))" "TOP PROCESSES (CPU)" "$C3"
-  box_line "$((right_x + 2))" "$((gif_y + gif_h + 14))" "$((right_w - 4))" "  PID   CPU   MEM   CMD"
-  process_start_row=$((gif_y + gif_h + 15))
-  for ((r = process_start_row; r <= lines - 1; r++)); do
+  box_line "$((right_x + 2))" "$((gif_y + gif_h + 1))" "$((right_w - 4))" "TOP PROCESSES (CPU)" "$C3"
+  box_line "$((right_x + 2))" "$((gif_y + gif_h + 2))" "$((right_w - 4))" "  PID   CPU   MEM   CMD"
+  process_start_row=$((gif_y + gif_h + 3))
+  for ((r = gif_y + gif_h + 3; r <= lines - 1; r++)); do
     box_line "$((right_x + 2))" "$r" "$((right_w - 4))" ""
   done
   process_row="$process_start_row"
