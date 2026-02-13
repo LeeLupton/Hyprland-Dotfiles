@@ -2,7 +2,7 @@
 
 rice-check() {
   if [[ -x "$HOME/.config/dotfiles/healthcheck.sh" ]]; then
-    bash "$HOME/.config/dotfiles/healthcheck.sh"
+    bash "$HOME/.config/dotfiles/healthcheck.sh" "$@"
   else
     echo "healthcheck script missing: ~/.config/dotfiles/healthcheck.sh"
     return 1
