@@ -280,12 +280,9 @@ render_gif_block() {
   if command -v kitten >/dev/null 2>&1 && [[ -n "${KITTY_WINDOW_ID:-}" ]]; then
     # Kitty ships the image protocol client, so this works without extra installs.
     if [[ "$mode" == "tui" ]]; then
+      [[ -n "$place_arg" ]] || return 1
       kitten icat --clear --silent >/dev/null 2>&1 || true
-      if [[ -n "$place_arg" ]]; then
-        kitten icat --silent --stdin=no --transfer-mode=stream --engine="$icat_engine" --z-index=-10 --place "$place_arg" --loop -1 "$gif_path" >/dev/null 2>&1 &
-      else
-        kitten icat --silent --stdin=no --transfer-mode=stream --engine="$icat_engine" --z-index=-10 --loop -1 "$gif_path" >/dev/null 2>&1 &
-      fi
+      kitten icat --silent --stdin=no --transfer-mode=stream --engine="$icat_engine" --z-index=0 --place "$place_arg" --loop -1 "$gif_path" >/dev/null 2>&1 &
       GIF_PID="$!"
       return 0
     elif kitten icat --silent --stdin=no --engine="$icat_engine" "$gif_path" 2>/dev/null; then
@@ -349,8 +346,10 @@ render_tui() {
   printf "%b%s%b\n" "$C1" "RICE-CHECK :: RICEFETCH" "$C0"
   printf "%b%s%b\n" "$C1" "RICE-CHECK GIF CORE  (q to quit) | left metrics / right gif" "$C0"
   printf "%b%s%b\n" "$C2" "$(printf '%*s' "$left_width" '' | tr ' ' '-')" "$C0"
-  if [[ "$ANIMATE" -eq 1 ]]; then
+  if [[ "$ANIMATE" -eq 1 ]] && [[ -n "$gif_place" ]]; then
     render_gif_block "$gif_path" "tui" "$gif_place"
+  elif [[ "$ANIMATE" -eq 1 ]]; then
+    printf "%b%s%b\n" "$C3" "terminal too small for GIF pane; enlarge window for animation" "$C0"
   fi
   printf "\033[%d;1H" "$body_row"
   render_body
@@ -360,7 +359,7 @@ render_tui() {
     if (( tick % 10 == 0 )); then
       gather_data
       for ((row = body_row; row <= lines; row++)); do
-        printf "\033[%d;1H\033[0K" "$row"
+        printf "\033[%d;1H%-*s" "$row" "$left_width" ""
       done
       printf "\033[%d;1H" "$body_row"
       render_body
