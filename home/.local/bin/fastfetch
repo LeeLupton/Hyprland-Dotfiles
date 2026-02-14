@@ -1,0 +1,203 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+REAL_FASTFETCH="/usr/bin/fastfetch"
+TMP_DIR=""
+
+cleanup() {
+  if [[ -n "$TMP_DIR" && -d "$TMP_DIR" ]]; then
+    rm -rf "$TMP_DIR"
+  fi
+}
+trap cleanup EXIT
+
+run_native() {
+  "$REAL_FASTFETCH" "$@"
+}
+
+show_help() {
+  cat <<'EOF'
+fastfetch wrapper (FFmpeg media-enabled)
+
+Default:
+  fastfetch                Run native fastfetch with FFmpeg logo support
+
+Wrapper options:
+  --native [args...]       Force plain native /usr/bin/fastfetch
+
+Media support:
+  If logo source points to video/audio/image media, wrapper can render it inline:
+  - image: rendered directly
+  - video: converted to short animated gif
+  - audio: converted to animated waveform gif
+EOF
+}
+
+expand_path() {
+  local p="$1"
+  if [[ "$p" == "~/"* ]]; then
+    printf "%s\n" "$HOME/${p#~/}"
+  elif [[ "$p" == "~" ]]; then
+    printf "%s\n" "$HOME"
+  else
+    printf "%s\n" "$p"
+  fi
+}
+
+extract_logo_source_from_config() {
+  local cfg="$1"
+  [[ -f "$cfg" ]] || return 1
+  local src
+  src="$(rg -No '"source"\s*:\s*"[^"]+"' "$cfg" 2>/dev/null | head -n1 | sed -E 's/^"source"\s*:\s*"([^"]+)".*$/\1/' || true)"
+  [[ -n "$src" ]] || return 1
+  expand_path "$src"
+}
+
+has_video_stream() {
+  local src="$1"
+  ffprobe -v error -select_streams v:0 -show_entries stream=codec_type -of csv=p=0 "$src" 2>/dev/null | grep -q "video"
+}
+
+has_audio_stream() {
+  local src="$1"
+  ffprobe -v error -select_streams a:0 -show_entries stream=codec_type -of csv=p=0 "$src" 2>/dev/null | grep -q "audio"
+}
+
+build_media_logo() {
+  local src="$1"
+  local out=""
+  [[ -f "$src" ]] || return 1
+  command -v ffmpeg >/dev/null 2>&1 || return 1
+  command -v ffprobe >/dev/null 2>&1 || return 1
+
+  local mime
+  mime="$(file -Lb --mime-type "$src" 2>/dev/null || true)"
+  if [[ "$mime" == image/* ]]; then
+    printf "%s\n" "$src"
+    return 0
+  fi
+
+  TMP_DIR="$(mktemp -d)"
+  out="$TMP_DIR/logo.gif"
+  if has_video_stream "$src"; then
+    ffmpeg -hide_banner -loglevel error -y -i "$src" \
+      -vf "fps=14,scale=960:-1:flags=lanczos:force_original_aspect_ratio=decrease" \
+      -t 5 -loop 0 "$out"
+    printf "%s\n" "$out"
+    return 0
+  fi
+
+  if has_audio_stream "$src"; then
+    ffmpeg -hide_banner -loglevel error -y -i "$src" \
+      -filter_complex "showwaves=s=960x360:mode=line:rate=25,format=rgb24" \
+      -t 5 -loop 0 "$out"
+    printf "%s\n" "$out"
+    return 0
+  fi
+
+  return 1
+}
+
+render_media_inline() {
+  local media="$1"
+  local width="$2"
+  local height="$3"
+  [[ -t 1 ]] || return 1
+
+  if command -v kitten >/dev/null 2>&1 && [[ -n "${KITTY_WINDOW_ID:-}" ]]; then
+    kitten icat --clear --silent >/dev/null 2>&1 || true
+    kitten icat --silent --stdin=no --place "${width}x${height}@0x1" --loop -1 "$media" >/dev/null 2>&1 || return 1
+    return 0
+  fi
+
+  if command -v chafa >/dev/null 2>&1; then
+    chafa --size="${width}x${height}" --animate=off "$media" >/dev/null 2>&1 || return 1
+    return 0
+  fi
+
+  return 1
+}
+
+if [[ ! -x "$REAL_FASTFETCH" ]]; then
+  echo "fastfetch wrapper error: /usr/bin/fastfetch not found" >&2
+  exit 1
+fi
+
+logo_source=""
+config_path=""
+logo_width="30"
+logo_height="12"
+declare -a native_args=()
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --help|-h)
+      show_help
+      exit 0
+      ;;
+    --native)
+      shift
+      continue
+      ;;
+    -c|--config)
+      config_path="$(expand_path "${2:-}")"
+      native_args+=("$1" "${2:-}")
+      shift 2
+      continue
+      ;;
+    --config=*)
+      config_path="$(expand_path "${1#*=}")"
+      native_args+=("$1")
+      shift
+      continue
+      ;;
+    --logo|--file|--raw|--kitty|--kitty-direct|--kitty-icat|--chafa|--sixel|--iterm)
+      logo_source="$(expand_path "${2:-}")"
+      native_args+=("$1" "${2:-}")
+      shift 2
+      continue
+      ;;
+    --logo=*)
+      logo_source="$(expand_path "${1#*=}")"
+      native_args+=("$1")
+      shift
+      continue
+      ;;
+    --logo-width)
+      logo_width="${2:-30}"
+      native_args+=("$1" "${2:-}")
+      shift 2
+      continue
+      ;;
+    --logo-height)
+      logo_height="${2:-12}"
+      native_args+=("$1" "${2:-}")
+      shift 2
+      continue
+      ;;
+    *)
+      native_args+=("$1")
+      shift
+      ;;
+  esac
+done
+
+# If no explicit logo was passed, try active config logo source.
+if [[ -z "$logo_source" ]]; then
+  if [[ -z "$config_path" ]]; then
+    config_path="$HOME/.config/fastfetch/config.jsonc"
+  fi
+  logo_source="$(extract_logo_source_from_config "$config_path" || true)"
+fi
+
+if [[ -n "$logo_source" && -f "$logo_source" ]]; then
+  media_logo="$(build_media_logo "$logo_source" || true)"
+  if [[ -n "${media_logo:-}" ]]; then
+    render_media_inline "$media_logo" "$logo_width" "$logo_height" || true
+    run_native "${native_args[@]}" --logo-type none
+    exit $?
+  fi
+fi
+
+run_native "${native_args[@]}"
+exit $?

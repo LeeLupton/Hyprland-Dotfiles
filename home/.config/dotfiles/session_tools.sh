@@ -1,21 +1,11 @@
 #!/usr/bin/env bash
 
 rice-check() {
-  if [[ -x "$HOME/.config/dotfiles/healthcheck.sh" ]]; then
-    bash "$HOME/.config/dotfiles/healthcheck.sh" "$@"
-  else
-    echo "healthcheck script missing: ~/.config/dotfiles/healthcheck.sh"
-    return 1
-  fi
+  fastfetch "$@"
 }
 
 rice-check-npu() {
-  if [[ -x "$HOME/.config/dotfiles/healthcheck.sh" ]]; then
-    bash "$HOME/.config/dotfiles/healthcheck.sh" | rg -i 'NPU|accel|intel_vpu|amdxdna|qaic|hailo' || true
-  else
-    echo "healthcheck script missing: ~/.config/dotfiles/healthcheck.sh"
-    return 1
-  fi
+  fastfetch | rg -i 'NPU|accel|intel_vpu|amdxdna|qaic|hailo' || true
 }
 
 rice-restart() {
